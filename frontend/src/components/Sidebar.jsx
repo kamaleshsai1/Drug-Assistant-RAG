@@ -10,21 +10,28 @@ import {
   X,
   UserCircle,
   FileText,
+  ArrowRight,
 } from "lucide-react";
+import ConfirmationModal from "./ConfirmationModal";
 
 function Sidebar({
   user,
   chats = [],
   activeChatId = null,
+  currentView = "chat",
   onNewChat,
+  onViewChat,
   onSelectChat,
   onDeleteChat,
   onLibrary,
   onLogout,
   mobileOpen = false,
   onClose,
+  onOpenPrivacy,
+  onOpenTerms,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
 
   // ============================================================
   // SEARCH CHATS
@@ -51,18 +58,14 @@ function Sidebar({
 
   const handleDelete = (event, chatId) => {
     event.stopPropagation();
+    setDeleteTargetId(chatId);
+  };
 
-    if (typeof onDeleteChat !== "function") {
-      return;
+  const confirmDelete = () => {
+    if (deleteTargetId && typeof onDeleteChat === "function") {
+      onDeleteChat(deleteTargetId);
     }
-
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this chat?"
-    );
-
-    if (confirmed) {
-      onDeleteChat(chatId);
-    }
+    setDeleteTargetId(null);
   };
 
   // ============================================================
@@ -236,8 +239,17 @@ function Sidebar({
 
           <button
             type="button"
-            className="sidebar-nav-item"
-            onClick={handleNewChat}
+            className={`sidebar-nav-item ${
+              currentView === "chat" ? "sidebar-nav-item-active" : ""
+            }`}
+            onClick={() => {
+              if (typeof onViewChat === "function") {
+                onViewChat();
+              } else {
+                handleNewChat();
+              }
+              onClose?.();
+            }}
           >
             <MessageSquare size={18} />
 
@@ -248,7 +260,9 @@ function Sidebar({
 
           <button
             type="button"
-            className="sidebar-nav-item"
+            className={`sidebar-nav-item ${
+              currentView === "library" ? "sidebar-nav-item-active" : ""
+            }`}
             onClick={handleLibrary}
           >
             <LibraryIcon size={18} />
@@ -357,7 +371,21 @@ function Sidebar({
             LIBRARY QUICK ACCESS
         ====================================================== */}
 
-        <div className="sidebar-library-card">
+        <div
+          className={`sidebar-library-card ${
+            currentView === "library" ? "sidebar-library-card-active" : ""
+          }`}
+          onClick={handleLibrary}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              handleLibrary();
+            }
+          }}
+          title="Open your drug information library"
+        >
           <div className="library-card-icon">
             <FileText size={19} />
           </div>
@@ -368,19 +396,43 @@ function Sidebar({
             </div>
 
             <div className="library-card-text">
-              Access your uploaded drug
-              information
+              Access your uploaded drug information
             </div>
           </div>
 
           <button
             type="button"
             className="library-card-button"
-            onClick={handleLibrary}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleLibrary();
+            }}
             aria-label="Open Library"
             title="Open Library"
           >
-            →
+            <ArrowRight size={16} strokeWidth={2} />
+          </button>
+        </div>
+
+        {/* ======================================================
+            LEGAL & COMPLIANCE
+        ====================================================== */}
+
+        <div className="sidebar-legal-links">
+          <button
+            type="button"
+            className="sidebar-legal-btn"
+            onClick={onOpenPrivacy}
+          >
+            Privacy Policy
+          </button>
+          <span className="sidebar-legal-sep">•</span>
+          <button
+            type="button"
+            className="sidebar-legal-btn"
+            onClick={onOpenTerms}
+          >
+            Terms of Use
           </button>
         </div>
 
@@ -414,6 +466,17 @@ function Sidebar({
           </button>
         </div>
       </aside>
+
+      <ConfirmationModal
+        isOpen={deleteTargetId !== null}
+        title="Delete Conversation"
+        message="Are you sure you want to delete this chat session? This action cannot be undone."
+        confirmLabel="Delete Chat"
+        cancelLabel="Keep Chat"
+        isDanger={true}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTargetId(null)}
+      />
     </>
   );
 }

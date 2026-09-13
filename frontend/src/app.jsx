@@ -4,11 +4,24 @@ import {
   useState
 } from "react";
 
+import {
+  Sun,
+  Moon,
+  Menu,
+  Pill,
+  FileText,
+  ArrowUp,
+  X
+} from "lucide-react";
+
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
 import AuthPage from "./components/AuthPage";
 import Library from "./components/Library";
+import PrivacyPolicy from "./components/PrivacyPolicy";
+import TermsAndConditions from "./components/TermsAndConditions";
+import FAQAccordion from "./components/FAQAccordion";
 
 import {
   askAURA,
@@ -42,6 +55,27 @@ function App() {
         localStorage.getItem("aura_token")
       )
     );
+
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // ============================================================
+  // THEME MANAGEMENT (Light / Dark)
+  // ============================================================
+
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("drugassist_theme") || "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("drugassist_theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((previous) => (previous === "light" ? "dark" : "light"));
+  };
 
   // Keep the logged-in user available to the Sidebar.
   // AuthPage stores this object in localStorage as "aura_user".
@@ -139,6 +173,9 @@ function App() {
   const streamRef =
     useRef(null);
 
+  const speechRecognitionRef =
+    useRef(null);
+
 
   // ============================================================
   // CHAT SCROLL
@@ -149,6 +186,59 @@ function App() {
 
   const chatAreaRef =
     useRef(null);
+
+  // Scroll & UTM tracking
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // UTM Tracking (Item 14)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const utmSource = params.get("utm_source");
+      const utmMedium = params.get("utm_medium");
+      const utmCampaign = params.get("utm_campaign");
+      if (utmSource || utmMedium || utmCampaign) {
+        sessionStorage.setItem(
+          "drugassist_utm",
+          JSON.stringify({
+            source: utmSource || "",
+            medium: utmMedium || "",
+            campaign: utmCampaign || "",
+            timestamp: new Date().toISOString()
+          })
+        );
+      }
+    } catch (e) {}
+  }, []);
+
+  // Scroll tracking on chatAreaRef (Items 4 & 8)
+  useEffect(() => {
+    const el = chatAreaRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const total = scrollHeight - clientHeight;
+      const progress = total > 0 ? Math.min(100, Math.max(0, (scrollTop / total) * 100)) : 0;
+      setScrollProgress(progress);
+      setShowScrollTop(scrollTop > 260);
+    };
+
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [currentView, messages.length]);
+
+  const handleScrollToTop = () => {
+    if (chatAreaRef.current) {
+      chatAreaRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const handleDismissBanner = () => {
+    setShowBanner(false);
+    sessionStorage.setItem("drugassist_dismiss_banner", "true");
+  };
 
 
   // ============================================================
@@ -493,26 +583,50 @@ function App() {
   // ============================================================
 
   const handleSelectDocument = (
-    documentId
+    documentOrId
   ) => {
+    if (typeof documentOrId === "object" && documentOrId !== null) {
+      setSelectedDocumentId(documentOrId.id);
+      setSelectedDocumentName(
+        documentOrId.filename || "Selected document"
+      );
+
+      setUploadedDocuments((previous) => {
+        if (
+          previous.some(
+            (doc) => Number(doc.id) === Number(documentOrId.id)
+          )
+        ) {
+          return previous;
+        }
+        return [...previous, documentOrId];
+      });
+
+      setCurrentView("chat");
+      setInput("");
+      return;
+    }
+
+    const documentId = documentOrId;
     const selected = uploadedDocuments.find(
       (document) =>
         Number(document.id) ===
         Number(documentId)
     );
 
-    if (!selected) {
-      return;
+    if (selected) {
+      setSelectedDocumentId(
+        selected.id
+      );
+
+      setSelectedDocumentName(
+        selected.filename
+      );
+    } else {
+      setSelectedDocumentId(documentId);
     }
 
-    setSelectedDocumentId(
-      selected.id
-    );
-
-    setSelectedDocumentName(
-      selected.filename
-    );
-
+    setCurrentView("chat");
     setInput("");
   };
 
@@ -1163,152 +1277,34 @@ function App() {
       return;
     }
 
-
-    const token =
-      getVoiceToken();
-
-
     try {
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        const cleanText = answer
+          .replace(/\[Source[^\]]*\]/gi, "")
+          .replace(/\[\^?[0-9]+\]/gi, "")
+          .replace(/[*#_`>]/g, "")
+          .replace(/\n+/g, " ")
+          .trim();
 
-      setVoiceStatus(
-        "Generating voice response..."
-      );
-
-
-      const response =
-        await fetch(
-          `${API_BASE_URL}/speak`,
-          {
-
-            method:
-              "POST",
-
-            headers: {
-
-              "Content-Type":
-                "application/json",
-
-              Authorization:
-                `Bearer ${token}`
-
-            },
-
-            body:
-              JSON.stringify({
-                text: answer
-              })
-
-          }
-        );
-
-
-      if (!response.ok) {
-
-        const errorText =
-          await response.text();
-
-        throw new Error(
-          errorText ||
-          `Voice response failed (${response.status})`
-        );
-
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.onstart = () => {
+          setVoiceStatus("Speaking response...");
+        };
+        utterance.onend = () => {
+          setVoiceStatus("");
+        };
+        utterance.onerror = () => {
+          setVoiceStatus("");
+        };
+        window.speechSynthesis.speak(utterance);
       }
-
-
-      const contentType =
-        response.headers.get(
-          "content-type"
-        );
-
-
-      if (
-        !contentType ||
-        !contentType.includes(
-          "audio"
-        )
-      ) {
-
-        throw new Error(
-          "DrugAssist returned an invalid audio response."
-        );
-
-      }
-
-
-      const audioBlob =
-        await response.blob();
-
-
-      if (
-        !audioBlob ||
-        audioBlob.size === 0
-      ) {
-
-        throw new Error(
-          "DrugAssist returned an empty audio response."
-        );
-
-      }
-
-
-      const audioUrl =
-        URL.createObjectURL(
-          audioBlob
-        );
-
-
-      const audio =
-        new Audio(audioUrl);
-
-
-      audio.onended = () => {
-
-        URL.revokeObjectURL(
-          audioUrl
-        );
-
-        setVoiceStatus("");
-
-      };
-
-
-      audio.onerror = () => {
-
-        URL.revokeObjectURL(
-          audioUrl
-        );
-
-        setVoiceStatus("");
-
-        console.error(
-          "Audio playback failed."
-        );
-
-      };
-
-
-      await audio.play();
-
-
-      setVoiceStatus(
-        "Playing DrugAssist's response..."
-      );
-
-
     } catch (error) {
-
-      console.error(
-        "TEXT TO SPEECH ERROR:",
-        error
-      );
-
-
-      setVoiceStatus(
-        `Voice playback failed: ${error.message}`
-      );
-
+      console.error("TEXT TO SPEECH ERROR:", error);
+      setVoiceStatus("");
     }
-
   };
 
 
@@ -1349,7 +1345,9 @@ function App() {
       const data =
         await voiceAsk(
           audioBlob,
-          currentConversationId
+          "",
+          currentConversationId,
+          selectedDocumentId
         );
 
       if (data.conversation_id) {
@@ -1458,7 +1456,60 @@ function App() {
       return;
     }
 
+    // 1. Try native Web Speech API (real-time voice typing)
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
 
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onstart = () => {
+          setIsRecording(true);
+          setVoiceStatus("Listening... speak now");
+        };
+
+        recognition.onresult = (event) => {
+          let text = "";
+          for (let i = 0; i < event.results.length; i++) {
+            text += event.results[i][0].transcript;
+          }
+          if (text) {
+            setInput(text);
+          }
+        };
+
+        recognition.onerror = (event) => {
+          console.warn("Speech recognition notice:", event.error);
+          setIsRecording(false);
+          if (event.error === "not-allowed") {
+            setVoiceStatus("Microphone access denied. Please allow microphone permissions in browser.");
+          } else if (event.error === "no-speech") {
+            setVoiceStatus("No speech detected. Please click mic and try again.");
+          } else {
+            setVoiceStatus(`Microphone notice: ${event.error}`);
+          }
+          setTimeout(() => setVoiceStatus(""), 4500);
+        };
+
+        recognition.onend = () => {
+          setIsRecording(false);
+          setVoiceStatus("");
+          speechRecognitionRef.current = null;
+        };
+
+        speechRecognitionRef.current = recognition;
+        recognition.start();
+        return;
+      } catch (err) {
+        console.warn("SpeechRecognition fallback to MediaRecorder:", err);
+      }
+    }
+
+    // 2. Fallback: MediaRecorder + Groq Whisper
     if (
       !navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia
@@ -1467,6 +1518,7 @@ function App() {
       setVoiceStatus(
         "Your browser does not support microphone recording."
       );
+      setTimeout(() => setVoiceStatus(""), 4000);
 
       return;
 
@@ -1582,6 +1634,7 @@ function App() {
           setVoiceStatus(
             "Microphone recording failed."
           );
+          setIsRecording(false);
 
         };
 
@@ -1661,7 +1714,7 @@ function App() {
       setIsRecording(true);
 
       setVoiceStatus(
-        "Listening... click Voice again to stop."
+        "Listening... click microphone again to stop."
       );
 
 
@@ -1672,6 +1725,8 @@ function App() {
         error
       );
 
+
+      setIsRecording(false);
 
       if (
         error.name ===
@@ -1698,6 +1753,7 @@ function App() {
         );
 
       }
+      setTimeout(() => setVoiceStatus(""), 4500);
 
     }
 
@@ -1710,19 +1766,20 @@ function App() {
 
   const stopRecording = () => {
 
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch (err) {
+        // ignore
+      }
+      speechRecognitionRef.current = null;
+    }
+
     const recorder =
       mediaRecorderRef.current;
 
 
-    if (!recorder) {
-      return;
-    }
-
-
-    if (
-      recorder.state ===
-      "recording"
-    ) {
+    if (recorder && recorder.state === "recording") {
 
       setIsRecording(false);
 
@@ -1733,6 +1790,8 @@ function App() {
 
       recorder.stop();
 
+    } else {
+      setIsRecording(false);
     }
 
   };
@@ -1823,63 +1882,6 @@ function App() {
         .chat-area > * {
           max-width: 100%;
         }
-
-        .aura-selected-document {
-          position: absolute;
-          left: 50%;
-          bottom: 156px;
-          transform: translateX(-50%);
-          width: min(1050px, calc(100% - 120px));
-          box-sizing: border-box;
-          display: flex;
-          align-items: center;
-          gap: 9px;
-          padding: 9px 12px;
-          border: 1px solid #dedee2;
-          border-radius: 10px;
-          background: #f7f7f8;
-          color: #555963;
-          font-size: 13px;
-          z-index: 5;
-        }
-
-        .aura-selected-document-dot {
-          color: #171717;
-          font-size: 8px;
-          flex: 0 0 auto;
-        }
-
-        .aura-selected-document-text {
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .aura-selected-document-text strong {
-          color: #202123;
-          font-weight: 600;
-        }
-
-        .aura-clear-document {
-          margin-left: auto;
-          flex: 0 0 auto;
-          width: 24px;
-          height: 24px;
-          border: 0;
-          border-radius: 6px;
-          background: transparent;
-          color: #777b84;
-          font-size: 20px;
-          line-height: 1;
-          cursor: pointer;
-        }
-
-        .aura-clear-document:hover {
-          background: #e9e9eb;
-          color: #202123;
-        }
-
         /*
           CHAT SCROLL FIX
           ----------------------------------------------------------
@@ -1955,6 +1957,11 @@ function App() {
       `}</style>
 
 
+      {/* Skip to content link (Item 12: A11y) */}
+      <a href="#main-chat-area" className="skip-to-content">
+        Skip to main content ↓
+      </a>
+
       {/* ======================================================
           SIDEBAR
       ====================================================== */}
@@ -1963,11 +1970,17 @@ function App() {
         user={user}
         chats={conversations}
         activeChatId={currentConversationId}
+        currentView={currentView}
         onNewChat={handleNewChat}
+        onViewChat={handleOpenChat}
         onSelectChat={handleOpenConversation}
         onDeleteChat={handleDeleteChat}
         onLibrary={handleOpenLibrary}
         onLogout={handleLogout}
+        mobileOpen={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        onOpenPrivacy={() => setShowPrivacy(true)}
+        onOpenTerms={() => setShowTerms(true)}
 
         /* Keep these props for compatibility with the existing
            document-selection implementation. */
@@ -2006,20 +2019,56 @@ function App() {
 
         <header className="topbar">
 
+          <button
+            type="button"
+            className="mobile-menu-button"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open sidebar"
+          >
+            <Menu size={18} />
+          </button>
+
+          <div className="mobile-brand">
+            <Pill size={16} />
+            <span>DrugAssist</span>
+          </div>
+
           <div className="topbar-spacer" />
 
           <div className="topbar-actions">
 
             <button
+              type="button"
               className="theme-button"
-              title="Change theme"
+              onClick={toggleTheme}
+              title={
+                theme === "light"
+                  ? "Switch to dark mode"
+                  : "Switch to light mode"
+              }
+              aria-label={
+                theme === "light"
+                  ? "Switch to dark mode"
+                  : "Switch to light mode"
+              }
             >
-              ◐
+              {theme === "light" ? (
+                <Moon size={18} strokeWidth={2} />
+              ) : (
+                <Sun size={18} strokeWidth={2} />
+              )}
             </button>
 
           </div>
 
         </header>
+
+        {/* Scroll Progress Bar (Item 8) */}
+        <div
+          className="scroll-progress-bar"
+          style={{ width: `${scrollProgress}%` }}
+          aria-hidden="true"
+        />
 
 
         {/* ====================================================
@@ -2031,9 +2080,12 @@ function App() {
             apiUrl={API_BASE_URL}
             token={localStorage.getItem("aura_token")}
             onBack={handleOpenChat}
+            selectedDocumentId={selectedDocumentId}
+            onSelectDocument={handleSelectDocument}
           />
         ) : (
           <div
+            id="main-chat-area"
             ref={chatAreaRef}
             className="chat-area"
             style={{
@@ -2041,32 +2093,31 @@ function App() {
               minHeight: 0,
               overflowY: "auto",
               overflowX: "hidden",
-              paddingBottom: "240px",
+              paddingBottom: "280px",
               scrollBehavior: "smooth"
             }}
           >
 
             {messages.length === 0 && (
               <div className="welcome-screen">
-                <div className="welcome-logo">
-                  <span
-                    style={{
-                      fontSize: "27px",
-                      lineHeight: 1
-                    }}
-                  >
-                    💊
-                  </span>
+                <div className="welcome-logo" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+                    <rect x="2" y="2" width="20" height="20" rx="4" fill="#0f172a" />
+                    <path d="M12 6v12" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+                    <path d="M6 12h12" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+                  </svg>
                 </div>
 
                 <h2>
-                  How can I help you?
+                  Prescribing Information Assistant
                 </h2>
 
                 <p>
-                  Ask about medicines, dosage, side effects, precautions,
-                  interactions, and information from your uploaded documents.
+                  Grounded clinical drug intelligence with official citations. Query indications, dosages, contraindications, boxed warnings, and drug interactions directly from official labeling literature.
                 </p>
+
+                {/* Expandable Clinical FAQ (Item 19) */}
+                <FAQAccordion />
               </div>
             )}
 
@@ -2120,85 +2171,57 @@ function App() {
 
 
         {/* ====================================================
-            SELECTED PDF
-        ==================================================== */}
-
-        {currentView === "chat" && selectedDocumentId !== null && (
-          <div
-            className="aura-selected-document"
-            title="The next question will be answered using this PDF."
-          >
-            <span className="aura-selected-document-dot">
-              ●
-            </span>
-
-            <span className="aura-selected-document-text">
-              <strong>Using PDF:</strong>{" "}
-              {selectedDocumentName || "Selected document"}
-            </span>
-
-            <button
-              type="button"
-              className="aura-clear-document"
-              onClick={() => {
-                setSelectedDocumentId(null);
-                setSelectedDocumentName("");
-              }}
-              title="Stop using this PDF"
-            >
-              ×
-            </button>
-          </div>
-        )}
-
-        {/* ====================================================
             CHAT INPUT
         ==================================================== */}
 
         {currentView === "chat" && (
           <ChatInput
-
-            value={
-            input
-          }
-
-          onChange={
-            setInput
-          }
-
-          onSend={
-            handleSend
-          }
-
-          onVoice={
-            handleVoice
-          }
-
-          onFileUpload={
-            handleFileUpload
-          }
-
-          pendingImage={
-            pendingImage
-          }
-
-          pendingImagePreview={
-            pendingImagePreview
-          }
-
-          onRemoveImage={
-            removePendingImage
-          }
-
-            loading={
-              loading
+            value={input}
+            onChange={setInput}
+            onSend={handleSend}
+            onVoice={handleVoice}
+            isRecording={isRecording}
+            voiceStatus={voiceStatus}
+            onFileUpload={handleFileUpload}
+            pendingImage={pendingImage}
+            pendingImagePreview={pendingImagePreview}
+            onRemoveImage={removePendingImage}
+            loading={loading}
+            selectedDocumentName={
+              selectedDocumentId ? selectedDocumentName : null
             }
-
+            onChangeDocument={handleOpenLibrary}
+            onClearDocument={() => {
+              setSelectedDocumentId(null);
+              setSelectedDocumentName("");
+            }}
           />
         )}
 
-
       </section>
+
+      {/* Floating Scroll-to-Top Button (Item 4) */}
+      {showScrollTop && currentView === "chat" && (
+        <button
+          type="button"
+          className="scroll-to-top-btn"
+          onClick={handleScrollToTop}
+          title="Scroll to top"
+          aria-label="Scroll to top"
+        >
+          <ArrowUp size={18} strokeWidth={2.4} />
+        </button>
+      )}
+
+      {showPrivacy && (
+        <PrivacyPolicy onClose={() => setShowPrivacy(false)} />
+      )}
+
+      {showTerms && (
+        <TermsAndConditions onClose={() => setShowTerms(false)} />
+      )}
+
+
 
     </div>
 

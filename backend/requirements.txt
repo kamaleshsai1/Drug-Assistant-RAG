@@ -7,3 +7,6 @@ groq
 pinecone
 fastembed
 requests
+bcrypt
+pyjwt
+email-validator

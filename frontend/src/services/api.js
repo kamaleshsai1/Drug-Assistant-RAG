@@ -6,7 +6,7 @@ const API_BASE_URL =
 // =========================================================
 
 function getToken() {
-  return localStorage.getItem("token");
+  return localStorage.getItem("token") || localStorage.getItem("aura_token");
 }
 
 function authHeaders(extra = {}) {
@@ -472,6 +472,18 @@ export async function askWithVoice(
   conversationId = null,
   documentId = null
 ) {
+  // Support both (audio, question, chatId) and (audio, chatId) calling patterns
+  if (
+    typeof question === "number" ||
+    (typeof question === "string" &&
+      question !== "" &&
+      !isNaN(Number(question)) &&
+      conversationId === null)
+  ) {
+    conversationId = question;
+    question = "";
+  }
+
   const formData = new FormData();
 
   if (audioFile) {

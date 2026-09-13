@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { FileText, Play, ExternalLink, Copy, Check } from "lucide-react";
 
 function Message({ message }) {
   const isUser = message?.role === "user";
+  const [copied, setCopied] = useState(false);
 
   const sources = Array.isArray(message?.sources)
     ? message.sources
@@ -17,6 +19,17 @@ function Message({ message }) {
     message?.content ||
     message?.answer ||
     "";
+
+  const handleCopy = async () => {
+    if (!answer) return;
+    try {
+      await navigator.clipboard.writeText(answer);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy message:", err);
+    }
+  };
 
   return (
     <div
@@ -88,10 +101,7 @@ function Message({ message }) {
               <section className="sources-section">
 
                 <div className="sources-heading">
-                  <span className="section-symbol">
-                    ▣
-                  </span>
-
+                  <FileText size={15} strokeWidth={2} />
                   <span>
                     Evidence
                   </span>
@@ -165,15 +175,10 @@ function Message({ message }) {
               <section className="videos-section">
 
                 <div className="videos-heading">
-
-                  <span className="section-symbol">
-                    ▶
-                  </span>
-
+                  <Play size={13} strokeWidth={2} fill="currentColor" />
                   <span>
                     Recommended videos
                   </span>
-
                 </div>
 
                 <div className="videos-list">
@@ -220,9 +225,7 @@ function Message({ message }) {
 
                         </div>
 
-                        <span className="video-arrow">
-                          ↗
-                        </span>
+                        <ExternalLink size={14} className="video-arrow" />
 
                       </a>
 
@@ -233,6 +236,19 @@ function Message({ message }) {
 
               </section>
             )}
+
+            <div className="message-actions">
+              <button
+                type="button"
+                className={`message-action-btn ${copied ? "copied" : ""}`}
+                onClick={handleCopy}
+                title="Copy answer to clipboard"
+                aria-label="Copy answer to clipboard"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                <span>{copied ? "Copied" : "Copy"}</span>
+              </button>
+            </div>
 
           </>
         )}

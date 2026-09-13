@@ -247,6 +247,20 @@ def clean_drug_name(
         name,
     )
 
+    # Remove trademark / registered symbols.
+    name = re.sub(r"[®™\u00ae\u2122]", " ", name)
+
+    # Remove release modifiers.
+    name = re.sub(
+        r"\b(?:extended[- ]release|delayed[- ]release|immediate[- ]release)\b",
+        " ",
+        name,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove parenthesized generic names e.g. (upadacitinib).
+    name = re.sub(r"\(.*?\)", " ", name)
+
     # Remove common pharmaceutical dosage forms.
     dosage_forms = (
         r"tablets?|"
@@ -314,6 +328,7 @@ def clean_drug_name(
     )
 
     name = _normalize_spaces(name)
+    name = re.sub(r"\b(?:for|and|with)\s*$", "", name, flags=re.IGNORECASE).strip()
 
     if not name:
         return None
@@ -367,7 +382,30 @@ def _looks_like_drug_name(
         "patient information",
         "product information",
         "uses",
+        "warning",
         "warnings",
+        "boxed warning",
+        "recent major changes",
+        "major changes",
+        "indications and usage",
+        "dosage and administration",
+        "dosage forms and strengths",
+        "contraindications",
+        "adverse reactions",
+        "drug interactions",
+        "use in specific populations",
+        "clinical pharmacology",
+        "clinical studies",
+        "how supplied",
+        "patient counseling",
+        "patient counseling information",
+        "full prescribing information",
+        "initial us approval",
+        "initial u s approval",
+        "mace",
+        "thrombosis",
+        "mortality",
+        "serious infections",
         "directions",
         "other information",
         "inactive ingredients",
@@ -389,6 +427,12 @@ def _looks_like_drug_name(
         "inactive ingredients",
         "active ingredient",
         "questions or comments",
+        "recent major changes",
+        "indications and usage",
+        "dosage and administration",
+        "contraindications",
+        "boxed warning",
+        "full prescribing information",
         "manufactured by",
         "distributed by",
         "laboratories",
@@ -587,6 +631,18 @@ def detect_drug_name(
         for line in first_page_text.splitlines()
         if line.strip()
     ]
+
+    # --------------------------------------------------------
+    # Strategy 0:
+    # FDA Prescribing Information Highlights Header
+    # --------------------------------------------------------
+
+    if "HIGHLIGHTS OF PRESCRIBING INFORMATION" in first_page_text.upper():
+        m_brand = re.search(r"\b([A-Z0-9\-]{2,30})[®™\u00ae\u2122]", first_page_text)
+        if m_brand:
+            brand_candidate = clean_drug_name(m_brand.group(1).strip())
+            if brand_candidate and _looks_like_drug_name(brand_candidate):
+                return brand_candidate.upper()
 
     # --------------------------------------------------------
     # Strategy 1:
@@ -1030,39 +1086,51 @@ def is_section_heading(
 
     line = line.strip()
 
-    if len(line) < 2:
+    if len(line) < 2 or len(line) > 120:
         return False
 
-    if len(line) > 160:
+    # --------------------------------------------------------
+    # Exclude non-headings:
+    # 1. Dosages, quantities, weights, ages, percentages, etc.
+    # --------------------------------------------------------
+    if re.match(
+        r"^\d+(?:\.\d+)*\s*(?:mg|ml|mcg|kg|g|tablet|tablets|capsule|capsules|weeks|days|hours|months|years|patient|patients|%|x\s+uln)\b",
+        line,
+        re.IGNORECASE,
+    ):
+        return False
+
+    # --------------------------------------------------------
+    # 2. Lines starting with bullets or list symbols
+    # --------------------------------------------------------
+    if line.startswith(("•", "·", "-", "*", "–", "—")):
+        return False
+
+    # --------------------------------------------------------
+    # 3. Sentences with full period followed by another sentence
+    # --------------------------------------------------------
+    if re.search(r"\.\s+[A-Z]", line):
+        return False
+
+    # --------------------------------------------------------
+    # 4. Dangling prepositions or sentence continuations
+    # --------------------------------------------------------
+    if re.search(
+        r"\b(?:is|are|of|for|and|or|to|with|may be|in|by|a|the|than|as|was|were|see|at)\s*$",
+        line,
+        re.IGNORECASE,
+    ):
+        return False
+
+    # --------------------------------------------------------
+    # 5. Parenthetical cross-references like (2.12, 2.13)
+    # --------------------------------------------------------
+    if re.match(r"^[\(\[].*?[\)\]]$", line):
         return False
 
     normalized = _normalize_heading_for_matching(
         line
     )
-
-    # --------------------------------------------------------
-    # Numbered FDA sections.
-    #
-    # 1 INDICATIONS AND USAGE
-    # 1.1 Hypertension
-    # 5 WARNINGS AND PRECAUTIONS
-    # --------------------------------------------------------
-
-    if re.match(
-        r"^\d+(?:\.\d+)*\s+[A-Za-z]",
-        line,
-    ):
-        return True
-
-    # --------------------------------------------------------
-    # Numbered headings where punctuation was extracted.
-    # --------------------------------------------------------
-
-    if re.match(
-        r"^\d+(?:\.\d+)*[\s.)\-]+[A-Za-z]",
-        line,
-    ):
-        return True
 
     # --------------------------------------------------------
     # Exact known heading.
@@ -1089,6 +1157,7 @@ def is_section_heading(
     #
     # Example:
     # 6 ADVERSE REACTIONS
+    # 2 DOSAGE AND ADMINISTRATION
     # --------------------------------------------------------
 
     for heading in KNOWN_SECTION_HEADINGS:
@@ -1108,6 +1177,33 @@ def is_section_heading(
                 )
             ):
                 return True
+
+    # --------------------------------------------------------
+    # Numbered FDA subsections.
+    # Must have decimal dot and standard FDA section number (1-17),
+    # followed by an uppercase word:
+    # 2.1 Recommended Evaluations...
+    # 2.7 Recommended Dosage in Crohn's Disease
+    # 14.5 Crohn's Disease
+    # --------------------------------------------------------
+
+    if re.match(
+        r"^(?:[1-9]|1[0-7])\.\d+(?:\.\d+)*\s+[A-Z]",
+        line,
+    ):
+        words = line.split()
+        if len(words) <= 12 and not line.endswith((".", ",", ";", ":")):
+            return True
+
+    # --------------------------------------------------------
+    # Numbered FDA top-level section.
+    # 1 to 17 followed by uppercase title
+    # --------------------------------------------------------
+    match_top = re.match(r"^(?:[1-9]|1[0-7])\s+([A-Z\s,/&-]+)$", line)
+    if match_top:
+        title_part = match_top.group(1).strip()
+        if len(title_part) >= 3 and len(title_part.split()) <= 8:
+            return True
 
     # --------------------------------------------------------
     # Short uppercase heading.
@@ -1132,11 +1228,12 @@ def is_section_heading(
 
         if (
             uppercase_ratio >= 0.90
-            and len(line.split()) <= 12
+            and len(line.split()) <= 8
+            and not line.endswith((".", ",", ";", ":"))
         ):
             # Avoid treating long metadata lines as headings.
             if not re.search(
-                r"\b(?:UNII|NDC|CAS|ISBN)\b",
+                r"\b(?:UNII|NDC|CAS|ISBN|TABLE|FIGURE|PAGE)\b",
                 line,
                 flags=re.IGNORECASE,
             ):
@@ -1150,7 +1247,7 @@ def is_section_heading(
     # General
     # --------------------------------------------------------
 
-    if len(line.split()) <= 6:
+    if len(line.split()) <= 6 and not line.endswith((".", ",", ";", ":")):
         title_case_words = sum(
             1
             for word in line.split()
@@ -1674,8 +1771,16 @@ def create_chunks(
             if not section_text:
                 continue
 
+            if (
+                section_name != "General"
+                and not section_text.lower().startswith(section_name.lower())
+            ):
+                full_text_to_chunk = f"{section_name}\n\n{section_text}"
+            else:
+                full_text_to_chunk = section_text
+
             section_chunks = chunk_text(
-                section_text,
+                full_text_to_chunk,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
             )

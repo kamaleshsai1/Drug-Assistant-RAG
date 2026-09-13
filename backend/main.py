@@ -2199,3 +2199,82 @@ async def chat(
                 + str(error)
             ),
         )
+
+
+# ============================================================
+# VOICE ASK ENDPOINT
+# ============================================================
+
+@app.post("/voice-ask")
+async def voice_ask_endpoint(
+    audio: UploadFile = File(...),
+    question: str = Form(""),
+    chat_id: int | None = Form(None),
+    document_id: int | None = Form(None),
+    user=Depends(get_current_user),
+):
+    """
+    Transcribes audio using Groq Whisper and queries the RAG system.
+    """
+    try:
+        audio_bytes = await audio.read()
+        if not audio_bytes:
+            raise HTTPException(status_code=400, detail="Audio file was empty.")
+
+        groq_api_key = os.environ.get("GROQ_API_KEY")
+        if not groq_api_key:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY is not configured.")
+
+        from groq import Groq
+        groq_client = Groq(api_key=groq_api_key)
+
+        filename = audio.filename or "recording.webm"
+        if not any(filename.endswith(ext) for ext in [".webm", ".wav", ".mp3", ".ogg", ".m4a"]):
+            filename = "recording.webm"
+
+        transcription = groq_client.audio.transcriptions.create(
+            file=(filename, audio_bytes),
+            model="whisper-large-v3",
+            response_format="text",
+        )
+
+        transcribed_text = transcription.strip() if isinstance(transcription, str) else str(transcription).strip()
+
+        if not transcribed_text:
+            raise HTTPException(status_code=400, detail="Could not detect speech in the audio recording.")
+
+        effective_question = transcribed_text
+        if question and question.strip() and question.strip() != transcribed_text:
+            effective_question = f"{question.strip()} {transcribed_text}"
+
+        chat_response = await chat(
+            question=effective_question,
+            chat_id=chat_id,
+            document_id=document_id,
+            files=None,
+            user=user,
+        )
+
+        chat_response["transcript"] = transcribed_text
+        chat_response["conversation_id"] = chat_response.get("chat_id")
+        return chat_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Voice processing failed: {str(e)}")
+
+
+class SpeakRequest(BaseModel):
+    text: str
+
+@app.post("/speak")
+def speak_endpoint(
+    request: SpeakRequest,
+    user=Depends(get_current_user),
+):
+    return {
+        "success": True,
+        "text": request.text,
+    }

@@ -6,13 +6,18 @@ import {
   RefreshCw,
   Search,
   X,
+  MessageSquare,
+  Check,
 } from "lucide-react";
+import ConfirmationModal from "./ConfirmationModal";
 
-function Library({ apiUrl, token, onBack }) {
+function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [deleteDocId, setDeleteDocId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadDocuments = async () => {
     try {
@@ -51,18 +56,17 @@ function Library({ apiUrl, token, onBack }) {
     loadDocuments();
   }, []);
 
-  const handleDelete = async (documentId) => {
-    const confirmed = window.confirm(
-      "Delete this document from your Library?"
-    );
+  const handleDelete = (documentId) => {
+    setDeleteDocId(documentId);
+  };
 
-    if (!confirmed) {
-      return;
-    }
+  const confirmDeleteDoc = async () => {
+    if (!deleteDocId) return;
 
     try {
+      setDeleting(true);
       const response = await fetch(
-        `${apiUrl}/documents/${documentId}`,
+        `${apiUrl}/documents/${deleteDocId}`,
         {
           method: "DELETE",
           headers: {
@@ -83,15 +87,15 @@ function Library({ apiUrl, token, onBack }) {
         previous.filter(
           (document) =>
             String(document.id) !==
-            String(documentId)
+            String(deleteDocId)
         )
       );
     } catch (err) {
       console.error("Delete document error:", err);
-
-      window.alert(
-        err.message || "Unable to delete document."
-      );
+      setError(err.message || "Failed to delete document.");
+    } finally {
+      setDeleting(false);
+      setDeleteDocId(null);
     }
   };
 
@@ -289,80 +293,108 @@ function Library({ apiUrl, token, onBack }) {
             <div className="document-grid">
 
               {filteredDocuments.map(
-                (document) => (
-                  <article
-                    className="document-card"
-                    key={document.id}
-                  >
+                (document) => {
+                  const isActive =
+                    selectedDocumentId !== null &&
+                    selectedDocumentId !== undefined &&
+                    String(document.id) === String(selectedDocumentId);
 
-                    <div className="document-card-top">
+                  return (
+                    <article
+                      className={`document-card ${
+                        isActive ? "document-card-active" : ""
+                      }`}
+                      key={document.id}
+                      onClick={() => {
+                        if (typeof onSelectDocument === "function") {
+                          onSelectDocument(document);
+                        }
+                      }}
+                      title="Click to ask questions about this document in chat"
+                    >
+                      <div className="document-card-top">
+                        <div className="document-icon">
+                          <FileText size={24} />
+                        </div>
 
-                      <div className="document-icon">
-                        <FileText size={25} />
+                        <div className="document-card-actions">
+                          {isActive && (
+                            <span className="document-active-badge">
+                              <Check size={12} strokeWidth={2.5} />
+                              Active
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            className="document-delete"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDelete(document.id);
+                            }}
+                            title="Delete document"
+                            aria-label="Delete document"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="document-name" title={document.filename}>
+                        {document.filename || "Untitled document"}
+                      </div>
+
+                      {document.drug_name && (
+                        <div className="document-drug">
+                          {document.drug_name}
+                        </div>
+                      )}
+
+                      {document.source && (
+                        <div className="document-source" title={document.source}>
+                          {document.source}
+                        </div>
+                      )}
+
+                      <div className="document-meta">
+                        {document.pages !== undefined && (
+                          <span>
+                            {document.pages}{" "}
+                            {document.pages === 1 ? "page" : "pages"}
+                          </span>
+                        )}
+
+                        {document.chunks !== undefined && (
+                          <span>{document.chunks} chunks</span>
+                        )}
+                      </div>
+
+                      <div className="document-date">
+                        Added {formatDate(document.created_at)}
                       </div>
 
                       <button
-                        className="document-delete"
-                        onClick={() =>
-                          handleDelete(
-                            document.id
-                          )
-                        }
-                        title="Delete document"
-                        aria-label="Delete document"
+                        type="button"
+                        className={`document-chat-btn ${
+                          isActive ? "active" : ""
+                        }`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (typeof onSelectDocument === "function") {
+                            onSelectDocument(document);
+                          }
+                        }}
                       >
-                        <Trash2 size={17} />
+                        <MessageSquare size={14} />
+                        <span>
+                          {isActive
+                            ? "Active in Chat"
+                            : "Chat with this document"}
+                        </span>
                       </button>
-
-                    </div>
-
-                    <div className="document-name">
-                      {document.filename ||
-                        "Untitled document"}
-                    </div>
-
-                    {document.drug_name && (
-                      <div className="document-drug">
-                        {document.drug_name}
-                      </div>
-                    )}
-
-                    {document.source && (
-                      <div className="document-source">
-                        {document.source}
-                      </div>
-                    )}
-
-                    <div className="document-meta">
-
-                      {document.pages !==
-                        undefined && (
-                        <span>
-                          {document.pages}{" "}
-                          {document.pages === 1
-                            ? "page"
-                            : "pages"}
-                        </span>
-                      )}
-
-                      {document.chunks !==
-                        undefined && (
-                        <span>
-                          {document.chunks} chunks
-                        </span>
-                      )}
-
-                    </div>
-
-                    <div className="document-date">
-                      Added{" "}
-                      {formatDate(
-                        document.created_at
-                      )}
-                    </div>
-
-                  </article>
-                )
+                    </article>
+                  );
+                }
               )}
 
             </div>
@@ -370,6 +402,17 @@ function Library({ apiUrl, token, onBack }) {
         )}
 
       </main>
+
+      <ConfirmationModal
+        isOpen={deleteDocId !== null}
+        title="Remove Document"
+        message="Are you sure you want to remove this drug prescribing PDF from your library? Its indexed embeddings will be permanently removed."
+        confirmLabel={deleting ? "Removing..." : "Remove Document"}
+        cancelLabel="Keep Document"
+        isDanger={true}
+        onConfirm={confirmDeleteDoc}
+        onCancel={() => setDeleteDocId(null)}
+      />
 
     </div>
   );

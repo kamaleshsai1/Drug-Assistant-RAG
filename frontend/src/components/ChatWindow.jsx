@@ -7,14 +7,18 @@ function ChatWindow({ messages = [], loading = false }) {
       <div className="messages">
         {messages.length === 0 ? (
           <div className="chat-window-empty">
-            <div className="chat-window-empty-icon">
-              💊
+            <div className="chat-window-empty-icon" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+                <rect x="2" y="2" width="20" height="20" rx="4" fill="#0f172a" />
+                <path d="M12 6v12" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+                <path d="M6 12h12" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+              </svg>
             </div>
 
-            <h3>DrugAssist</h3>
+            <h3>Prescribing Information Assistant</h3>
 
             <p>
-              Ask a question about the loaded drug information.
+              Grounded clinical intelligence with verified page and section citations.
             </p>
           </div>
         ) : (

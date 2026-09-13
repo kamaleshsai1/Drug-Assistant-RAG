@@ -1,13 +1,20 @@
 import React, { useState } from "react";
+import { Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
 import { loginUser, registerUser } from "../services/api";
+import PrivacyPolicy from "./PrivacyPolicy";
+import TermsAndConditions from "./TermsAndConditions";
 
 function AuthPage({ onLogin }) {
   const [mode, setMode] = useState("login");
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -19,6 +26,8 @@ function AuthPage({ onLogin }) {
     setSuccess("");
     setPassword("");
     setConfirmPassword("");
+    setShowPassword(false);
+    setShowConfirmPassword(false);
   };
 
   const handleSubmit = async (event) => {
@@ -281,6 +290,43 @@ function AuthPage({ onLogin }) {
           color: #a0a2a8;
         }
 
+        .auth-input-wrapper {
+          position: relative;
+          width: 100%;
+          display: flex;
+          align-items: center;
+        }
+
+        .auth-input-wrapper .auth-input {
+          padding-right: 42px;
+        }
+
+        .auth-toggle-pw {
+          position: absolute;
+          right: 9px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: transparent;
+          border: 0;
+          padding: 6px;
+          color: #71717a;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+          transition: color 0.15s ease, background-color 0.15s ease;
+        }
+
+        .auth-toggle-pw:hover {
+          color: #18181b;
+          background: #f4f4f5;
+        }
+
+        .auth-input.has-error {
+          border-color: #ef4444;
+        }
+
         .auth-button {
           width: 100%;
           height: 46px;
@@ -311,21 +357,27 @@ function AuthPage({ onLogin }) {
         }
 
         .auth-error {
+          display: flex;
+          align-items: center;
+          gap: 9px;
           padding: 11px 12px;
           border-radius: 8px;
-          background: #fff1f1;
-          border: 1px solid #ffd4d4;
-          color: #b42318;
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          color: #b91c1c;
           font-size: 13px;
           line-height: 1.4;
         }
 
         .auth-success {
+          display: flex;
+          align-items: center;
+          gap: 9px;
           padding: 11px 12px;
           border-radius: 8px;
-          background: #f0faf3;
-          border: 1px solid #ccebd5;
-          color: #18733c;
+          background: #f0fdf4;
+          border: 1px solid #bbf7d0;
+          color: #15803d;
           font-size: 13px;
           line-height: 1.4;
         }
@@ -356,8 +408,12 @@ function AuthPage({ onLogin }) {
 
       <div className="auth-card">
 
-        <div className="auth-logo">
-          💊
+        <div className="auth-logo" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="#0f172a" />
+            <path d="M12 6v12" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+            <path d="M6 12h12" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
         </div>
 
         <h1 className="auth-title">
@@ -365,7 +421,7 @@ function AuthPage({ onLogin }) {
         </h1>
 
         <p className="auth-subtitle">
-          Evidence-first drug intelligence
+          Evidence-first clinical drug intelligence
         </p>
 
         <div className="auth-tabs">
@@ -464,22 +520,33 @@ function AuthPage({ onLogin }) {
               Password
             </label>
 
-            <input
-              id="auth-password"
-              className="auth-input"
-              type="password"
-              value={password}
-              onChange={(event) =>
-                setPassword(event.target.value)
-              }
-              placeholder="Enter your password"
-              autoComplete={
-                mode === "login"
-                  ? "current-password"
-                  : "new-password"
-              }
-              disabled={loading}
-            />
+            <div className="auth-input-wrapper">
+              <input
+                id="auth-password"
+                className={`auth-input ${error && !password ? "has-error" : ""}`}
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) =>
+                  setPassword(event.target.value)
+                }
+                placeholder="Enter your password"
+                autoComplete={
+                  mode === "login"
+                    ? "current-password"
+                    : "new-password"
+                }
+                disabled={loading}
+              />
+              <button
+                type="button"
+                className="auth-toggle-pw"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                tabIndex="-1"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
 
           </div>
 
@@ -493,33 +560,46 @@ function AuthPage({ onLogin }) {
                 Confirm Password
               </label>
 
-              <input
-                id="auth-confirm-password"
-                className="auth-input"
-                type="password"
-                value={confirmPassword}
-                onChange={(event) =>
-                  setConfirmPassword(
-                    event.target.value
-                  )
-                }
-                placeholder="Confirm your password"
-                autoComplete="new-password"
-                disabled={loading}
-              />
+              <div className="auth-input-wrapper">
+                <input
+                  id="auth-confirm-password"
+                  className={`auth-input ${error && !confirmPassword ? "has-error" : ""}`}
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(event) =>
+                    setConfirmPassword(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Confirm your password"
+                  autoComplete="new-password"
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="auth-toggle-pw"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  tabIndex="-1"
+                >
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
 
             </div>
           )}
 
           {error && (
-            <div className="auth-error">
-              {error}
+            <div className="auth-error" role="alert">
+              <AlertCircle size={16} style={{ flexShrink: 0 }} />
+              <span>{error}</span>
             </div>
           )}
 
           {success && (
-            <div className="auth-success">
-              {success}
+            <div className="auth-success" role="status">
+              <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
+              <span>{success}</span>
             </div>
           )}
 
@@ -540,12 +620,32 @@ function AuthPage({ onLogin }) {
         </form>
 
         <div className="auth-footer">
-          DrugAssist provides information from
-          loaded drug documents and is not a substitute
-          for professional medical advice.
+          <p>
+            DrugAssist provides reference information from official prescribing documentation and is not a substitute for professional medical advice.
+          </p>
+          <div style={{ marginTop: "12px", display: "flex", gap: "14px", justifyContent: "center", fontSize: "12px" }}>
+            <button
+              type="button"
+              onClick={() => setShowPrivacy(true)}
+              style={{ background: "none", border: "none", color: "#0284c7", cursor: "pointer", textDecoration: "underline", padding: 0 }}
+            >
+              Privacy Policy
+            </button>
+            <span style={{ color: "#9ca3af" }}>•</span>
+            <button
+              type="button"
+              onClick={() => setShowTerms(true)}
+              style={{ background: "none", border: "none", color: "#0284c7", cursor: "pointer", textDecoration: "underline", padding: 0 }}
+            >
+              Terms & Conditions
+            </button>
+          </div>
         </div>
 
       </div>
+
+      {showPrivacy && <PrivacyPolicy onClose={() => setShowPrivacy(false)} />}
+      {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
 
     </div>
   );

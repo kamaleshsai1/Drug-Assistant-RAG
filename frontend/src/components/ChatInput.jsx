@@ -12,7 +12,8 @@ import {
   Image as ImageIcon,
   Mic,
   ArrowUp,
-  X
+  X,
+  FileText
 } from "lucide-react";
 
 
@@ -25,7 +26,12 @@ function ChatInput({
   pendingImage,
   pendingImagePreview,
   onRemoveImage,
-  loading
+  loading,
+  selectedDocumentName,
+  onChangeDocument,
+  onClearDocument,
+  isRecording = false,
+  voiceStatus = ""
 }) {
 
   // ============================================================
@@ -437,13 +443,114 @@ function ChatInput({
           transform: translateX(-50%);
           width: min(860px, calc(100% - 48px));
           z-index: 1000;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          pointer-events: none;
+        }
+
+        .composer-shell > * {
+          pointer-events: auto;
+        }
+
+        .aura-selected-document {
+          width: 100%;
+          box-sizing: border-box;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 8px 14px;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          background: var(--surface);
+          color: var(--text-secondary);
+          font-size: 13px;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+          backdrop-filter: blur(8px);
+        }
+
+        [data-theme="dark"] .aura-selected-document {
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+        }
+
+        .aura-selected-document-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          flex: 1;
+        }
+
+        .aura-selected-document-icon {
+          color: var(--accent);
+          flex-shrink: 0;
+        }
+
+        .aura-selected-document-text {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-secondary);
+        }
+
+        .aura-selected-document-text strong {
+          color: var(--text);
+          font-weight: 600;
+        }
+
+        .aura-selected-document-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-shrink: 0;
+        }
+
+        .aura-change-document {
+          padding: 4px 10px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background: var(--surface-soft);
+          color: var(--text);
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          white-space: nowrap;
+        }
+
+        .aura-change-document:hover {
+          background: var(--surface-hover);
+          border-color: var(--border-strong);
+        }
+
+        .aura-clear-document {
+          width: 22px;
+          height: 22px;
+          border: 0;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--text-muted);
+          font-size: 18px;
+          line-height: 1;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+        }
+
+        .aura-clear-document:hover {
+          background: var(--surface-hover);
+          color: var(--text);
         }
 
 
         .composer-box {
           position: relative;
-          background: #ffffff;
-          border: 1px solid #d9d9d9;
+          background: var(--surface);
+          border: 1px solid var(--border);
           border-radius: 22px;
           box-shadow:
             0 8px 28px rgba(0,0,0,0.08);
@@ -473,8 +580,8 @@ function ChatInput({
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #f1f1f1;
-          color: #666;
+          background: var(--surface-soft);
+          color: var(--text-muted);
         }
 
 
@@ -500,13 +607,13 @@ function ChatInput({
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          color: #202020;
+          color: var(--text);
         }
 
 
         .composer-attachment-info span {
           font-size: 13px;
-          color: #7a7a7a;
+          color: var(--text-muted);
         }
 
 
@@ -517,7 +624,7 @@ function ChatInput({
           border: 0;
           border-radius: 50%;
           background: transparent;
-          color: #666;
+          color: var(--text-muted);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -526,8 +633,8 @@ function ChatInput({
 
 
         .composer-remove:hover {
-          background: #f1f1f1;
-          color: #111;
+          background: var(--surface-hover);
+          color: var(--text);
         }
 
 
@@ -548,12 +655,12 @@ function ChatInput({
           font: inherit;
           font-size: 17px;
           line-height: 1.45;
-          color: #222;
+          color: var(--text);
         }
 
 
         .composer-box textarea::placeholder {
-          color: #8b8b8b;
+          color: var(--text-muted);
           opacity: 1;
         }
 
@@ -581,7 +688,7 @@ function ChatInput({
           padding: 0;
           border: 0;
           background: transparent;
-          color: #222;
+          color: var(--text);
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -591,13 +698,62 @@ function ChatInput({
 
 
         .composer-icon-button:hover:not(:disabled) {
-          background: #f2f2f2;
+          background: var(--surface-hover);
         }
 
 
         .composer-icon-button:disabled {
           cursor: default;
           opacity: 0.55;
+        }
+
+        .composer-icon-button.voice-button.recording {
+          background: rgba(239, 68, 68, 0.15) !important;
+          color: #dc2626 !important;
+          animation: voicePulse 1.2s infinite ease-in-out;
+        }
+
+        @keyframes voicePulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
+            transform: scale(1);
+          }
+          50% {
+            box-shadow: 0 0 0 7px rgba(239, 68, 68, 0);
+            transform: scale(1.08);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            transform: scale(1);
+          }
+        }
+
+        .composer-listening-bar {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 12px;
+          margin-bottom: 8px;
+          background: rgba(239, 68, 68, 0.08);
+          border: 1px solid rgba(239, 68, 68, 0.22);
+          border-radius: 12px;
+          font-size: 13px;
+          font-weight: 500;
+          color: #dc2626;
+        }
+
+        .composer-listening-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #dc2626;
+          box-shadow: 0 0 6px #dc2626;
+          animation: dotBlink 1s infinite alternate;
+        }
+
+        @keyframes dotBlink {
+          from { opacity: 1; transform: scale(1); }
+          to { opacity: 0.3; transform: scale(0.7); }
         }
 
 
@@ -629,7 +785,7 @@ function ChatInput({
           padding: 0;
           border: 0;
           border-radius: 50%;
-          background: #2f6fd6;
+          background: #0284c7;
           color: white;
           display: flex;
           align-items: center;
@@ -640,8 +796,8 @@ function ChatInput({
 
 
         .composer-send-button.inactive {
-          background: #dfe2e8;
-          color: #9aa0aa;
+          background: var(--surface-hover);
+          color: var(--text-muted);
           cursor: default;
         }
 
@@ -657,11 +813,11 @@ function ChatInput({
         .drugassist-attachment-menu {
           width: 190px;
           box-sizing: border-box;
-          background: #ffffff;
-          border: 1px solid #d8d8d8;
+          background: var(--surface);
+          border: 1px solid var(--border);
           border-radius: 14px;
           box-shadow:
-            0 12px 32px rgba(0,0,0,0.15),
+            0 12px 32px rgba(0,0,0,0.25),
             0 2px 8px rgba(0,0,0,0.06);
           padding: 6px;
           z-index: 2147483647;
@@ -696,7 +852,7 @@ function ChatInput({
           align-items: center;
           gap: 11px;
           text-align: left;
-          color: #222;
+          color: var(--text);
           cursor: pointer;
           font-size: 14px;
           font-family: inherit;
@@ -704,18 +860,18 @@ function ChatInput({
 
 
         .drugassist-attachment-menu button:hover {
-          background: #f3f3f3;
+          background: var(--surface-hover);
         }
 
 
         .drugassist-attachment-menu button:active {
-          background: #e9e9e9;
+          background: var(--surface-soft);
         }
 
 
         .drugassist-attachment-menu button svg {
           flex: 0 0 auto;
-          color: #555;
+          color: var(--text-secondary);
         }
 
 
@@ -800,10 +956,59 @@ function ChatInput({
 
 
         {/* ======================================================
+            ACTIVE DOCUMENT BANNER (Cleanly stacked above composer box)
+        ====================================================== */}
+        {selectedDocumentName && (
+          <div
+            className="aura-selected-document"
+            title="Questions will be answered specifically using this document."
+          >
+            <div className="aura-selected-document-left">
+              <FileText size={15} className="aura-selected-document-icon" />
+              <span className="aura-selected-document-text">
+                <strong>PDF Active:</strong> {selectedDocumentName}
+              </span>
+            </div>
+
+            <div className="aura-selected-document-actions">
+              <button
+                type="button"
+                className="aura-change-document"
+                onClick={onChangeDocument}
+                title="Change document in Library"
+              >
+                Change
+              </button>
+
+              <button
+                type="button"
+                className="aura-clear-document"
+                onClick={onClearDocument}
+                title="Clear selection (search all drug information)"
+                aria-label="Clear document selection"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
+
+        {/* ======================================================
             COMPOSER BOX
         ====================================================== */}
 
         <div className="composer-box">
+
+          {/* ====================================================
+              VOICE LISTENING STATUS
+          ==================================================== */}
+          {isRecording && (
+            <div className="composer-listening-bar">
+              <span className="composer-listening-dot" />
+              <span>{voiceStatus || "Listening... speak now"}</span>
+            </div>
+          )}
 
 
           {/* ====================================================
@@ -928,6 +1133,8 @@ function ChatInput({
               type="button"
               className={
                 `composer-icon-button voice-button ${
+                  isRecording ? "recording" : ""
+                } ${
                   loading
                     ? "disabled"
                     : ""
@@ -935,13 +1142,13 @@ function ChatInput({
               }
               onClick={onVoice}
               disabled={loading}
-              title="Voice input"
-              aria-label="Voice input"
+              title={isRecording ? "Stop listening" : "Voice input"}
+              aria-label={isRecording ? "Stop listening" : "Voice input"}
             >
 
               <Mic
                 size={22}
-                strokeWidth={1.9}
+                strokeWidth={isRecording ? 2.4 : 1.9}
               />
 
             </button>

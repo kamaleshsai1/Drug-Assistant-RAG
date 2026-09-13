@@ -35,11 +35,11 @@ FALLBACK_MODEL = os.getenv(
 )
 
 RETRIEVAL_K = int(
-    os.getenv("RAG_RETRIEVAL_K", "8")
+    os.getenv("RAG_RETRIEVAL_K", "15")
 )
 
 CONTEXT_K = int(
-    os.getenv("RAG_CONTEXT_K", "6")
+    os.getenv("RAG_CONTEXT_K", "8")
 )
 
 MIN_SCORE = float(
@@ -51,7 +51,7 @@ MAX_CHUNK_CHARS = int(
 )
 
 MAX_COMPLETION_TOKENS = int(
-    os.getenv("GROQ_MAX_COMPLETION_TOKENS", "700")
+    os.getenv("GROQ_MAX_COMPLETION_TOKENS", "2048")
 )
 
 MAX_HISTORY_MESSAGES = int(
@@ -118,6 +118,16 @@ def clean_answer_format(answer: str) -> str:
         return ""
 
     answer = normalize_citations(answer)
+
+    # Standardize dashes (replace em dashes and en dashes)
+    answer = answer.replace("\u2014", " - ").replace("\u2013", " - ")
+
+    # Strip emoji symbols to maintain clean clinical presentation
+    answer = re.sub(
+        r"[\U00010000-\U0010ffff\u2600-\u26ff\u2700-\u27bf\U0001f300-\U0001f9ff]",
+        "",
+        answer
+    )
 
     answer = re.sub(
         r"^```(?:markdown|text)?\s*",
@@ -239,6 +249,33 @@ def extract_matches(raw_results: Any) -> List[Any]:
 
 
 # ============================================================
+# MEDICAL CONDITIONS MAPPING
+# ============================================================
+
+KNOWN_CONDITIONS_MAP = [
+    ("atopic dermatitis", ["atopic dermatitis", "eczema", "ezcema", "ad"]),
+    ("rheumatoid arthritis", ["rheumatoid arthritis", "ra"]),
+    ("psoriatic arthritis", ["psoriatic arthritis", "psa", "psoriasis"]),
+    ("ankylosing spondylitis", ["ankylosing spondylitis", "as"]),
+    ("non-radiographic axial spondyloarthritis", ["non-radiographic axial spondyloarthritis", "nr-axspa", "axial spondyloarthritis", "axspa"]),
+    ("ulcerative colitis", ["ulcerative colitis", "uc"]),
+    ("crohn's disease", ["crohn's disease", "crohn's", "crohns disease", "crohns", "crohn", "cd"]),
+    ("polyarticular juvenile idiopathic arthritis", ["polyarticular juvenile idiopathic arthritis", "pjia", "juvenile idiopathic arthritis", "jia"]),
+    ("giant cell arteritis", ["giant cell arteritis", "gca"]),
+    ("renal impairment", ["renal impairment", "kidney impairment", "kidney disease", "renal disease", "egfr", "kidney"]),
+    ("hepatic impairment", ["hepatic impairment", "liver impairment", "liver disease", "hepatic"]),
+]
+
+def extract_condition_from_text(text: str) -> Optional[str]:
+    t = (text or "").lower()
+    for canonical, aliases in KNOWN_CONDITIONS_MAP:
+        for alias in sorted(aliases, key=len, reverse=True):
+            if re.search(r"\b" + re.escape(alias) + r"\b", t):
+                return canonical
+    return None
+
+
+# ============================================================
 # QUERY / DRUG DETECTION
 # ============================================================
 
@@ -248,10 +285,28 @@ def build_query_variations(question: str) -> List[str]:
     if not question:
         return []
 
-    return [
+    variations = [
         question,
         f"prescribing information {question}"
     ]
+
+    cond = extract_condition_from_text(question)
+    if cond:
+        variations.append(f"RINVOQ {cond}")
+        variations.append(f"{cond} prescribing information")
+
+    q_lower = question.lower()
+    if any(w in q_lower for w in ["dosage", "dose", "dosing", "administration"]):
+        variations.append(f"{question} recommended dosage")
+        variations.append(f"Section 2 dosage and administration {question}")
+        if cond:
+            variations.append(f"RINVOQ recommended dosage in {cond}")
+    elif any(w in q_lower for w in ["side effect", "adverse", "safety", "reaction"]):
+        variations.append(f"Section 6 adverse reactions {question}")
+    elif any(w in q_lower for w in ["warning", "precaution", "boxed warning"]):
+        variations.append(f"Section 5 warnings and precautions {question}")
+
+    return variations
 
 
 def extract_explicit_drug_name(
@@ -265,27 +320,35 @@ def extract_explicit_drug_name(
 
     patterns = [
         (
+            r"\b(?:dosage|dose|side\s+effects?|uses?|indications?|warnings?|contraindications?|interactions?)\s+(?:of|for)\s+"
+            r"([A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+)?)"
+            r"(?:\s+for|\s+in|\s*[?.!,]|$)"
+        ),
+        (
             r"\b(?:of|about|regarding)\s+"
-            r"([A-Za-z][A-Za-z0-9-]*"
-            r"(?:\s+[A-Za-z][A-Za-z0-9-]*){0,3})"
-            r"(?:\s*[?.!,]|$)"
+            r"([A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+)?)"
+            r"(?:\s+for|\s+in|\s*[?.!,]|$)"
         ),
         (
             r"\bwhat\s+is\s+"
-            r"(.+?)"
-            r"\s+(?:used\s+for|dosage|dose|"
-            r"side\s+effects|uses|indications|"
-            r"warnings|contraindications|"
-            r"interactions)\b"
+            r"([A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+)?)"
+            r"\s+(?:used\s+for|dosage|dose|side\s+effects|uses|indications|warnings|contraindications|interactions)\b"
         ),
         (
-            r"\b(?:tell\s+me\s+about|"
-            r"information\s+about)\s+"
-            r"([A-Za-z][A-Za-z0-9-]*"
-            r"(?:\s+[A-Za-z][A-Za-z0-9-]*){0,3})"
+            r"\b(?:tell\s+me\s+about|information\s+about)\s+"
+            r"([A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+)?)"
             r"(?:\s*[?.!,]|$)"
         )
     ]
+
+    stop_words = {
+        "the", "a", "an", "this", "that", "these", "those",
+        "recommended", "patient", "adult", "adults", "pediatric",
+        "child", "children", "drug", "medicine", "medication",
+        "treatment", "therapy", "induction", "maintenance",
+        "disease", "condition", "illness", "infection",
+        "what", "how", "when", "why", "where", "which"
+    }
 
     for pattern in patterns:
         match = re.search(
@@ -306,9 +369,9 @@ def extract_explicit_drug_name(
             "",
             candidate,
             flags=re.IGNORECASE
-        )
+        ).strip()
 
-        if candidate:
+        if candidate and candidate.lower() not in stop_words:
             return candidate
 
     return None
@@ -316,7 +379,7 @@ def extract_explicit_drug_name(
 
 def detect_drug_from_question(
     question: str,
-    initial_matches: List[Any]
+    initial_matches: Optional[List[Any]] = None
 ) -> Optional[str]:
 
     question = (question or "").strip()
@@ -326,21 +389,22 @@ def detect_drug_from_question(
 
     candidate_drugs = []
 
-    for match in initial_matches:
-        normalized = normalize_match(match)
+    if initial_matches:
+        for match in initial_matches:
+            normalized = normalize_match(match)
 
-        if not normalized:
-            continue
+            if not normalized:
+                continue
 
-        metadata = normalized.get(
-            "metadata",
-            {}
-        ) or {}
+            metadata = normalized.get(
+                "metadata",
+                {}
+            ) or {}
 
-        drug = metadata.get("drug")
+            drug = metadata.get("drug")
 
-        if drug and drug not in candidate_drugs:
-            candidate_drugs.append(str(drug))
+            if drug and drug not in candidate_drugs:
+                candidate_drugs.append(str(drug))
 
     explicit_drug = extract_explicit_drug_name(
         question
@@ -589,7 +653,16 @@ def is_follow_up_question(
         r"^one more\b",
         r"^again\b",
         r"^what about it\b",
-        r"^and then\b"
+        r"^and then\b",
+        r"\b(?:this|that|these|those|the same)\s+(?:drug|medicine|medication|condition|disease|patient|dose|dosage|indication|illness)\b",
+        r"\b(?:its|their)\s+(?:dose|dosage|side effects?|uses?|warnings?|contraindications?|safety)\b",
+        r"\b(?:for|in|of|about|with)\s+this\s+condition\b",
+        r"\b(?:for|of|in|about|with)\s+(?:that|this|it|the same)\b",
+        r"\b(?:for|of)\s+(?:that|this|it)\b",
+        r"^(?:what\s+is\s+the\s+)?(?:recommended\s+)?(?:dosage|dose|dosing|administration)(?:\s+(?:for|of|in|about)\s+(?:that|this|it))?\??$",
+        r"^(?:what\s+are\s+the\s+)?(?:side\s+effects?|adverse\s+reactions?|warnings?|precautions?|contraindications?)(?:\s+(?:for|of|in|about)\s+(?:that|this|it))?\??$",
+        r"^(?:how\s+to\s+take|how\s+should\s+it\s+be\s+taken|how\s+much\s+to\s+take)(?:\s+(?:for|of|in|about)\s+(?:that|this|it))?\??$",
+        r"\b(?:dose|dosage|side\s+effects?|safety|warnings?)\s+(?:of|for)\s+(?:it|that|this)\b"
     ]
 
     return any(
@@ -672,7 +745,17 @@ def is_personal_medical_question(
         "should i stop",
         "can i stop",
         "change my dose",
-        "change my medication"
+        "change my medication",
+        "prescribe me",
+        "write me a prescription",
+        "give me a prescription",
+        "can you prescribe",
+        "diagnose me",
+        "what disease do i have",
+        "do i have",
+        "recommend a medication for me",
+        "how much should i take",
+        "how many should i take"
     ]
 
     return any(
@@ -693,7 +776,10 @@ def load_long_term_memories(
         return []
 
     try:
-        from database import get_user_memories
+        try:
+            from database.database import get_user_memories
+        except ImportError:
+            from database import get_user_memories
 
         memories = get_user_memories(
             user_id
@@ -833,7 +919,10 @@ def save_memory_candidates(
         return
 
     try:
-        from database import upsert_memory
+        try:
+            from database.database import upsert_memory
+        except ImportError:
+            from database import upsert_memory
 
         for item in candidates:
             upsert_memory(
@@ -929,7 +1018,7 @@ def history_to_text(
 
 
 # ============================================================
-# CONTEXT-AWARE QUERY
+# CONTEXT-AWARE QUERY REFORMULATION
 # ============================================================
 
 def build_contextual_question(
@@ -942,22 +1031,91 @@ def build_contextual_question(
     if not question:
         return ""
 
-    history_text = history_to_text(
-        history
-    )
-
-    if not history_text:
+    if not history:
         return question
 
     if not is_follow_up_question(question):
         return question
 
-    return (
-        "Conversation context:\n"
-        f"{history_text}\n\n"
-        "Current user question:\n"
-        f"{question}"
+    # Extract last user and assistant turns
+    last_user = ""
+    last_assistant = ""
+    for item in reversed(history):
+        role = str(item.get("role", "")).lower()
+        content = str(item.get("content", ""))
+        if role == "user" and not last_user:
+            last_user = content
+        elif role == "assistant" and not last_assistant:
+            last_assistant = content
+        if last_user and last_assistant:
+            break
+
+    # Determine drug from question or history (default RINVOQ)
+    drug = (
+        extract_explicit_drug_name(question)
+        or extract_explicit_drug_name(last_user)
+        or detect_drug_from_question(question)
+        or detect_drug_from_question(last_user)
+        or "RINVOQ"
     )
+
+    # Check for known medical condition
+    cond = (
+        extract_condition_from_text(question)
+        or extract_condition_from_text(last_user)
+        or extract_condition_from_text(last_assistant)
+    )
+
+    q_lower = question.lower()
+    is_dosage = any(w in q_lower for w in ["dosage", "dose", "dosing", "how much", "administration", "take it", "how to take"])
+    is_safety = any(w in q_lower for w in ["side effect", "side effects", "adverse", "reaction", "safety", "risk", "safe"])
+    is_warning = any(w in q_lower for w in ["warning", "warnings", "contraindication", "contraindications", "precaution"])
+
+    if cond:
+        extra_label = " eczema" if cond == "atopic dermatitis" else ""
+        if is_dosage:
+            return f"{drug} recommended dosage in {cond}{extra_label}"
+        elif is_safety:
+            return f"{drug} adverse reactions side effects {cond}{extra_label}"
+        elif is_warning:
+            return f"{drug} warnings precautions {cond}{extra_label}"
+        else:
+            return f"{drug} {cond}{extra_label} {question}"
+
+    # If no known condition matched, try fast LLM query reformulation
+    try:
+        htext = history_to_text(history[-4:])
+        prompt = (
+            f"Given the conversation history and the user's follow-up question, "
+            f"rewrite the question into a single standalone medical search query. "
+            f"Resolve any pronouns (such as 'that', 'it', 'this') using the conversation context. "
+            f"Mention the drug ({drug}) and the medical condition or topic being discussed.\n"
+            f"Return ONLY the standalone search query text. Do not include quotes or conversational filler.\n\n"
+            f"Conversation history:\n{htext}\n\n"
+            f"Follow-up question:\n{question}"
+        )
+        resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            max_completion_tokens=512,
+            temperature=0
+        )
+        rewritten = (resp.choices[0].message.content or "").strip()
+        rewritten = re.sub(r"^(?:Standalone query|Search query|Rewritten query):\s*", "", rewritten, flags=re.IGNORECASE)
+        rewritten = rewritten.strip("\"'")
+        if rewritten and len(rewritten) > 3:
+            return rewritten
+    except Exception as err:
+        print("[Retrieval] LLM query reformulation failed:", repr(err))
+
+    # Fallback heuristic
+    if last_user:
+        clean_user = re.sub(r"[^\w\s]", "", last_user).strip()
+        if is_dosage:
+            return f"{drug} recommended dosage for {clean_user}"
+        return f"{drug} {clean_user} {question}"
+
+    return f"{drug} {question}"
 
 
 # ============================================================
@@ -1199,16 +1357,25 @@ def retrieve_documents(
         initial_matches
     )
 
+    if not detected_drug and retrieval_question != question:
+        detected_drug = detect_drug_from_question(
+            retrieval_question,
+            initial_matches
+        )
+
     explicit_drug = extract_explicit_drug_name(
         question
     )
 
+    if not explicit_drug and retrieval_question != question:
+        explicit_drug = extract_explicit_drug_name(
+            retrieval_question
+        )
+
     if explicit_drug and not detected_drug:
         print(
-            "[Retrieval] Requested drug is not indexed:",
-            explicit_drug
+            f"[Retrieval] Drug candidate '{explicit_drug}' not strictly mapped; falling back to dense semantic retrieval."
         )
-        return []
 
     if detected_drug:
         print(
@@ -1278,23 +1445,32 @@ def retrieve_documents(
                     metadata.get("drug", "")
                 )
 
+                # Skip only if result_drug is clearly a different known drug
                 if (
-                    normalize_drug_name(result_drug)
-                    != normalize_drug_name(
-                        detected_drug
-                    )
+                    result_drug
+                    and result_drug.lower() not in {"unknown", "warning", "recent major changes"}
+                    and normalize_drug_name(result_drug) != normalize_drug_name(detected_drug)
+                    and normalize_drug_name(detected_drug) not in normalize_drug_name(result_drug)
+                    and normalize_drug_name(result_drug) not in normalize_drug_name(detected_drug)
                 ):
                     continue
 
             if not match_id:
                 continue
 
+            # Deduplicate semantically identical chunks across duplicate document uploads
+            content_key = (
+                str(metadata.get("page", "")),
+                str(metadata.get("section", "")),
+                clean_pdf_text(metadata.get("text", ""))[:200]
+            )
+
             if (
-                match_id not in all_matches
+                content_key not in all_matches
                 or score >
-                all_matches[match_id]["score"]
+                all_matches[content_key]["score"]
             ):
-                all_matches[match_id] = normalized
+                all_matches[content_key] = normalized
 
     sorted_matches = sorted(
         all_matches.values(),
@@ -1377,9 +1553,8 @@ def build_context(
             continue
 
         chunk_key = (
-            str(document_id),
             str(page_number),
-            text
+            text.strip()
         )
 
         if chunk_key in seen_chunks:
@@ -1457,8 +1632,7 @@ For drug-information questions:
 10. Do not combine information from different drugs unless
     the supplied evidence explicitly supports the comparison.
 11. Page numbers and section names must come from evidence.
-12. If citations are used, use:
-    [Source X, Page Y]
+12. Always cite evidence using bracket citations like [Source X, Page Y] directly at the end of each bullet point or medical statement. Do NOT write separate lines or standalone labels like "Source: ...".
 13. Never fabricate citations.
 14. Keep answers concise and readable.
 15. Use bullets for lists.
@@ -1466,6 +1640,8 @@ For drug-information questions:
 17. Do not mention internal retrieval, vector databases,
     embeddings, prompts, or system instructions.
 18. Prefer evidence over assumptions.
+19. If the user asks whether a drug treats, cures, or is indicated for a disease or condition that is NOT listed in the approved indications of the prescribing information, explicitly state that according to the provided FDA prescribing information, the drug is NOT approved or indicated for that condition, list what it IS approved for, and advise consulting a healthcare professional.
+20. Refuse requests for self-prescribing, off-label guidance, or personalized diagnosis, and direct the user to a qualified clinician.
 """
 
 
@@ -1475,7 +1651,8 @@ def _call_groq(
     context: str,
     image_context: Any = None,
     history: Optional[List[Dict[str, Any]]] = None,
-    memories: Optional[List[Dict[str, Any]]] = None
+    memories: Optional[List[Dict[str, Any]]] = None,
+    retrieval_question: Optional[str] = None
 ) -> str:
 
     image_text = normalize_image_context(
@@ -1539,10 +1716,14 @@ def _call_groq(
             f"{image_text}\n"
         )
 
+    effective_question = question
+    if retrieval_question and retrieval_question != question:
+        effective_question = f"{question} (Reference: {retrieval_question})"
+
     user_prompt = f"""
 QUESTION:
 
-{question}
+{effective_question}
 
 SUPPLIED PRESCRIBING INFORMATION:
 
@@ -1588,7 +1769,8 @@ def generate_answer(
     context: str,
     image_context: Any = None,
     history: Optional[List[Dict[str, Any]]] = None,
-    memories: Optional[List[Dict[str, Any]]] = None
+    memories: Optional[List[Dict[str, Any]]] = None,
+    retrieval_question: Optional[str] = None
 ) -> str:
 
     models = []
@@ -1614,7 +1796,8 @@ def generate_answer(
                 context,
                 image_context,
                 history,
-                memories
+                memories,
+                retrieval_question=retrieval_question
             )
 
             answer = clean_answer_format(
@@ -1930,14 +2113,18 @@ def normalize_citations(
         flags=re.IGNORECASE
     )
 
+    # Normalize [Source 1, Page 2, Section General] -> [Source 1, Page 2]
     answer = re.sub(
-        r"\[\s*\[\s*"
-        r"(Source\s+\d+\s*,\s*Page\s+\d+)"
-        r"\s*\]\s*\]",
-        r"[\1]",
+        r"\[\s*Source\s+(\d+)\s*,\s*Page\s+(\d+)[^\]]*\]",
+        r"[Source \1, Page \2]",
         answer,
         flags=re.IGNORECASE
     )
+
+    # Clean dangling or broken source remnants from text
+    answer = re.sub(r"(?im)^\s*[\*\-•]?\s*Source:\s*(?:and|[.,\s])*$", "", answer)
+    answer = re.sub(r"(?im)\bSource:\s*and\.\s*", "", answer)
+    answer = re.sub(r"(?im)\bSource:\s*and\b", "", answer)
 
     return answer
 
@@ -2427,15 +2614,15 @@ def answer_question(
             "grounding_score": 0.0
         }
 
-    # IMPORTANT:
-    # The original user's actual question goes to the LLM,
-    # while retrieval_question is only used to find evidence.
+    # Pass both user's question and retrieval_question so that follow-up
+    # questions have exact contextual reference for the LLM.
     answer = generate_answer(
         question,
         context,
         image_context=normalized_image_context,
         history=conversation_history,
-        memories=memories
+        memories=memories,
+        retrieval_question=retrieval_question
     )
 
     answer = normalize_citations(
@@ -2445,10 +2632,6 @@ def answer_question(
     answer = validate_citations(
         answer,
         sources
-    )
-
-    answer = remove_inline_citations(
-        answer
     )
 
     answer = clean_answer_format(
