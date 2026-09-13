@@ -32,6 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from console import (
     render_backend_console,
+    render_health_page,
     render_privacy_page,
     render_terms_page,
     get_privacy_data,
@@ -223,13 +224,26 @@ class AskRequest(BaseModel):
 # ============================================================
 
 @app.get("/health")
-def health():
+def health(request: Request):
 
-    return {
-        "status": "healthy",
-        "message": "DrugAssist API is running",
-        "version": "4.0.0",
-    }
+    accept = request.headers.get("accept", "").lower()
+    format_param = request.query_params.get("format", "").lower()
+
+    if format_param == "json" or (
+        "application/json" in accept and "text/html" not in accept
+    ):
+        return JSONResponse(
+            content={
+                "status": "healthy",
+                "message": "DrugAssist API is running",
+                "version": "4.0.0",
+            }
+        )
+
+    return HTMLResponse(
+        content=render_health_page(),
+        status_code=200,
+    )
 
 
 # ============================================================
@@ -746,7 +760,7 @@ def remove_chat(
 
 
 # ============================================================
-# LIBRARY — GET DOCUMENTS
+# LIBRARY - GET DOCUMENTS
 # ============================================================
 
 @app.get("/documents")
@@ -765,7 +779,7 @@ def documents(
 
 
 # ============================================================
-# LIBRARY — DELETE DOCUMENT
+# LIBRARY - DELETE DOCUMENT
 # ============================================================
 
 @app.delete("/documents/{document_id}")
