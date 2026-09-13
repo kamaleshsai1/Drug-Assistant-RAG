@@ -4,6 +4,14 @@ A grounded Retrieval-Augmented Generation (RAG) system engineered for high-preci
 
 ---
 
+## Live Deployments (Render Cloud)
+
+- **Frontend Web Application**: [https://drugassist-frontend.onrender.com](https://drugassist-frontend.onrender.com)
+- **Backend REST API**: [https://drugassist-backend.onrender.com](https://drugassist-backend.onrender.com)
+- **API Health Check**: [https://drugassist-backend.onrender.com/health](https://drugassist-backend.onrender.com/health)
+
+---
+
 ## Technical Overview
 
 General-purpose language models often produce hallucinations or conflate dosages when answering clinical questions. DrugAssist mitigates this by restricting answers to retrieved document segments with deterministic citation enforcement. Every claim is mapped to verified manufacturer literature with bracketed page and section citations (`[Source 1, Page 4]`).
