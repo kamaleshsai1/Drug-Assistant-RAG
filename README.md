@@ -205,8 +205,3 @@ npm run dev
 
 > **Notice**: DrugAssist is an experimental retrieval and reference software designed for educational, research, and informational lookups. It is **not** an FDA-approved medical device, diagnostic system, or software as a medical device (SaMD). It does not provide medical diagnoses or individualized patient treatment plans. Healthcare professionals must exercise independent clinical judgment and verify dosage recommendations against primary manufacturer package inserts.
 
----
-
-## License
-
-MIT License. See [LICENSE](LICENSE) for details.
