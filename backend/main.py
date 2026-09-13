@@ -21,6 +21,17 @@ from fastapi import (
     File,
     Depends,
     Form,
+    Request,
+)
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+
+from console import (
+    render_backend_console,
+    render_privacy_page,
+    render_terms_page,
+    get_privacy_data,
+    get_terms_data,
+    FAVICON_SVG,
 )
 
 from typing import Optional
@@ -215,21 +226,65 @@ def health():
 
 
 # ============================================================
-# ROOT
+# ROOT & CONSOLE
 # ============================================================
 
 @app.get("/")
-def root():
+def root(request: Request):
 
-    return {
-        "name": "DrugAssist",
-        "description": (
-            "Evidence-first drug information "
-            "assistant with multimodal RAG"
-        ),
-        "status": "running",
-        "version": "4.0.0",
-    }
+    accept = request.headers.get("accept", "").lower()
+    if "text/html" in accept:
+        return HTMLResponse(
+            content=render_backend_console(),
+            status_code=200,
+        )
+
+    return JSONResponse(
+        content={
+            "name": "DrugAssist",
+            "description": (
+                "Evidence-first drug information "
+                "assistant with multimodal RAG"
+            ),
+            "status": "running",
+            "version": "4.0.0",
+        }
+    )
+
+
+@app.get("/privacy")
+def privacy(request: Request):
+
+    accept = request.headers.get("accept", "").lower()
+    if "text/html" in accept:
+        return HTMLResponse(
+            content=render_privacy_page(),
+            status_code=200,
+        )
+
+    return JSONResponse(content=get_privacy_data())
+
+
+@app.get("/terms")
+def terms(request: Request):
+
+    accept = request.headers.get("accept", "").lower()
+    if "text/html" in accept:
+        return HTMLResponse(
+            content=render_terms_page(),
+            status_code=200,
+        )
+
+    return JSONResponse(content=get_terms_data())
+
+
+@app.get("/favicon.ico")
+def favicon():
+
+    return Response(
+        content=FAVICON_SVG,
+        media_type="image/svg+xml",
+    )
 
 
 # ============================================================
