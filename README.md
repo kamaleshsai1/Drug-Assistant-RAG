@@ -1,4 +1,4 @@
-# DrugAssist — Evidence-First Prescribing Information RAG Engine
+# DrugAssist - Evidence-First Prescribing Information RAG Engine
 
 A grounded Retrieval-Augmented Generation (RAG) system engineered for high-precision queries over pharmaceutical prescribing documentation and drug monographs. DrugAssist extracts and indexes official manufacturer package inserts, parses standardized regulatory sections (Indications, Dosages, Contraindications, Boxed Warnings), and produces cited answers with verifiable page references.
 
@@ -8,7 +8,6 @@ A grounded Retrieval-Augmented Generation (RAG) system engineered for high-preci
 
 - **Frontend Web Application**: [https://drugassist-frontend.onrender.com](https://drugassist-frontend.onrender.com)
 - **Backend REST API**: [https://drugassist-backend.onrender.com](https://drugassist-backend.onrender.com)
-- **API Health Check**: [https://drugassist-backend.onrender.com/health](https://drugassist-backend.onrender.com/health)
 
 ---
 
