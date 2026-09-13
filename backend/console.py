@@ -614,9 +614,6 @@ def render_backend_console() -> str:
         <a href="/docs" class="btn btn-secondary">
           Explore OpenAPI Docs (/docs)
         </a>
-        <button type="button" id="pingBtn" class="btn btn-secondary" onclick="runHealthPing()">
-          Test Live /health
-        </button>
       </div>
     </section>
 
@@ -644,29 +641,6 @@ def render_backend_console() -> str:
         <div class="metric-label">LLM Reasoning Engine</div>
         <div class="metric-value">Groq Cloud Platform</div>
         <div class="metric-note">Ultra-low latency inference with deterministic citations</div>
-      </div>
-    </section>
-
-    <!-- Live Diagnostics Panel -->
-    <section class="panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-          </svg>
-          Live Service Telemetry & Diagnostics
-        </div>
-        <span class="auth-tag">Diagnostic Tool</span>
-      </div>
-      <p style="color: var(--text-secondary); font-size: 0.88rem;">
-        Trigger an immediate diagnostic health check against the local endpoint to measure round-trip HTTP latency.
-      </p>
-      <div class="ping-box">
-        <div class="ping-header">
-          <span>ENDPOINT: GET /health</span>
-          <span id="pingLatency">LATENCY: READY</span>
-        </div>
-        <div class="ping-output" id="pingOutput">{{"status": "healthy", "message": "DrugAssist API is running", "version": "4.0.0"}}</div>
       </div>
     </section>
 
@@ -793,33 +767,6 @@ def render_backend_console() -> str:
       </div>
     </div>
   </footer>
-
-  <script>
-    async function runHealthPing() {{
-      const btn = document.getElementById('pingBtn');
-      const latencyEl = document.getElementById('pingLatency');
-      const outputEl = document.getElementById('pingOutput');
-      
-      btn.disabled = true;
-      btn.innerText = 'Pinging...';
-      latencyEl.innerText = 'PINGING...';
-      
-      const startTime = performance.now();
-      try {{
-        const res = await fetch('/health', {{ cache: 'no-store' }});
-        const data = await res.json();
-        const duration = Math.round(performance.now() - startTime);
-        latencyEl.innerText = 'LATENCY: ' + duration + ' ms (HTTP ' + res.status + ')';
-        outputEl.innerText = JSON.stringify(data, null, 2);
-      }} catch (err) {{
-        latencyEl.innerText = 'ERROR: UNREACHABLE';
-        outputEl.innerText = 'Failed to connect: ' + err.message;
-      }} finally {{
-        btn.disabled = false;
-        btn.innerText = 'Test Live /health';
-      }}
-    }}
-  </script>
 </body>
 </html>
 """
