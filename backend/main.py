@@ -1,4 +1,8 @@
 import os
+import sys
+
+# Ensure backend directory is in python path regardless of working directory
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Limit internal math/ONNX thread pools for low memory footprint on Render
 os.environ["OMP_NUM_THREADS"] = "1"
