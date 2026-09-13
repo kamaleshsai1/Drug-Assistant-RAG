@@ -365,9 +365,15 @@ function App() {
       const data =
         await getConversations();
 
-      setConversations(
-        data.conversations || []
-      );
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.conversations)
+        ? data.conversations
+        : Array.isArray(data?.chats)
+        ? data.chats
+        : [];
+
+      setConversations(list);
 
     } catch (error) {
 
