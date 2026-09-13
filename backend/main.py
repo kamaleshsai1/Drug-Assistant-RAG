@@ -1,4 +1,14 @@
 import os
+
+# Limit internal math/ONNX thread pools for low memory footprint on Render
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["ORT_MAX_THREAD_COUNT"] = "1"
+os.environ["ONNXRUNTIME_EXECUTION_PROVIDERS"] = "CPUExecutionProvider"
+
 import shutil
 import uuid
 import traceback
@@ -12,6 +22,8 @@ from fastapi import (
     Depends,
     Form,
 )
+
+from typing import Optional
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -164,13 +176,15 @@ def startup_event():
 # ============================================================
 
 class RegisterRequest(BaseModel):
-    name: str
+    name: Optional[str] = None
+    username: Optional[str] = None
     email: EmailStr
     password: str
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
 
 
@@ -227,7 +241,8 @@ def register(
     request: RegisterRequest,
 ):
 
-    name = request.name.strip()
+    raw_name = request.name or request.username or ""
+    name = raw_name.strip()
 
     email = (
         str(request.email)
@@ -305,16 +320,22 @@ def login(
     request: LoginRequest,
 ):
 
-    email = (
-        str(request.email)
+    login_id = (
+        str(request.email or request.username or "")
         .strip()
         .lower()
     )
 
     password = request.password
 
+    if not login_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Email or username is required.",
+        )
+
     user = get_user_by_email(
-        email
+        login_id
     )
 
     if not user:

@@ -1,10 +1,14 @@
-# ============================================================
-# EMBEDDINGS
-# DrugAssist - FastEmbed
-# ============================================================
+import os
+import gc
 
-from fastembed import TextEmbedding
-
+# Strictly limit internal thread pools for memory safety on Render (512MB RAM limit)
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["ORT_MAX_THREAD_COUNT"] = "1"
+os.environ["ONNXRUNTIME_EXECUTION_PROVIDERS"] = "CPUExecutionProvider"
 
 # ============================================================
 # CONFIGURATION
@@ -16,23 +20,42 @@ EMBEDDING_DIMENSION = 384
 
 
 # ============================================================
-# LOAD EMBEDDING MODEL
+# LAZY EMBEDDING MODEL SINGLETON
 # ============================================================
 
-print("=" * 60)
-print("Loading embedding model...")
-print("=" * 60)
+_embedding_model = None
 
-embedding_model = TextEmbedding(
-    model_name=MODEL_NAME
-)
+def get_embedding_model():
+    """
+    Lazily initialize the FastEmbed model on first use.
+    Uses CPU only and threads=1 to remain well under the 512MB RAM limit.
+    """
+    global _embedding_model
+    if _embedding_model is None:
+        print("=" * 60)
+        print("Loading lightweight CPU embedding model...")
+        print("=" * 60)
+        from fastembed import TextEmbedding
+        _embedding_model = TextEmbedding(
+            model_name=MODEL_NAME,
+            threads=1,
+            cuda=False,
+            lazy_load=False,
+        )
+        print("Embedding model loaded successfully.")
+        print(f"Model: {MODEL_NAME}")
+        print(f"Embedding dimension: {EMBEDDING_DIMENSION}")
+        print("=" * 60)
+    return _embedding_model
 
-print("Embedding model loaded successfully.")
-print(f"Model: {MODEL_NAME}")
-print(
-    f"Embedding dimension: {EMBEDDING_DIMENSION}"
-)
-print("=" * 60)
+
+class _EmbeddingModelProxy:
+    """Proxy object so legacy code accessing embedding_model directly continues to work."""
+    def embed(self, *args, **kwargs):
+        return get_embedding_model().embed(*args, **kwargs)
+
+embedding_model = _EmbeddingModelProxy()
+
 
 
 # ============================================================
@@ -137,6 +160,9 @@ def generate_embeddings(texts):
         embeddings.append(
             vector_list
         )
+
+    del raw_embeddings
+    gc.collect()
 
     return embeddings
 
