@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from groq import Groq
 
 from pinecone_db import search_pinecone
-from youtube_service import search_youtube_videos
 from image_analyzer import analyze_image
 
 
@@ -2202,32 +2201,6 @@ def remove_inline_citations(
     ).strip()
 
 
-# ============================================================
-# VIDEO
-# ============================================================
-
-def wants_video(question: str) -> bool:
-
-    q = (question or "").lower().strip()
-
-    patterns = [
-        r"\byoutube\b",
-        r"\bvideo\b",
-        r"\bvideos\b",
-        r"\bwatch\b",
-        r"\bwatching\b",
-        r"\bshow\s+me\s+(?:a\s+)?video\b",
-        r"\bfind\s+(?:me\s+)?(?:a\s+)?video\b",
-        r"\bvideo\s+explanation\b",
-        r"\bvideo\s+tutorial\b",
-        r"\bvisual\s+explanation\b"
-    ]
-
-    return any(
-        re.search(pattern, q)
-        for pattern in patterns
-    )
-
 
 # ============================================================
 # CONFIDENCE
@@ -2340,14 +2313,6 @@ def answer_question(
         chat_id
     )
 
-    exclude_video_ids = {
-        video.get("video_id")
-        for video in previous_videos
-        if (
-            isinstance(video, dict)
-            and video.get("video_id")
-        )
-    }
 
     if not question:
         return {
@@ -2446,116 +2411,6 @@ def answer_question(
         )
     )
 
-    # --------------------------------------------------------
-    # VIDEO
-    # --------------------------------------------------------
-
-    if wants_video(question):
-
-        matches = retrieve_documents(
-            question,
-            image_context=normalized_image_context,
-            document_id=document_id
-        )
-
-        video_drug = extract_explicit_drug_name(
-            question
-        )
-
-        if matches:
-
-            retrieved_drug = (
-                matches[0]
-                .get("metadata", {})
-                .get("drug")
-            )
-
-            if retrieved_drug:
-
-                if not video_drug:
-                    video_drug = retrieved_drug
-
-                else:
-
-                    similarity = SequenceMatcher(
-                        None,
-                        normalize_drug_name(
-                            video_drug
-                        ),
-                        normalize_drug_name(
-                            retrieved_drug
-                        )
-                    ).ratio()
-
-                    if similarity >= 0.75:
-                        video_drug = retrieved_drug
-
-        if not video_drug:
-
-            return {
-                "success": True,
-                "question": question,
-                "answer": (
-                    "Please specify the medicine you "
-                    "would like a video about."
-                ),
-                "sources": [],
-                "videos": [],
-                "image_analysis": "",
-                "confidence": {
-                    "label": "not_found",
-                    "score": 0.0,
-                    "grounding_score": 0.0
-                },
-                "grounding_score": 0.0
-            }
-
-        try:
-
-            videos = search_youtube_videos(
-                drug=video_drug,
-                question=question,
-                max_results=5,
-                exclude_video_ids=exclude_video_ids
-            )
-
-        except Exception as error:
-
-            print(
-                "[YouTube] Search failed:",
-                repr(error)
-            )
-
-            videos = []
-
-        if videos:
-
-            answer = (
-                f"Here are some recent educational "
-                f"videos about {video_drug}."
-            )
-
-        else:
-
-            answer = (
-                f"I couldn't find suitable recent "
-                f"YouTube videos about {video_drug}."
-            )
-
-        return {
-            "success": True,
-            "question": question,
-            "answer": answer,
-            "sources": [],
-            "videos": videos,
-            "image_analysis": "",
-            "confidence": {
-                "label": "not_applicable",
-                "score": 0.0,
-                "grounding_score": 0.0
-            },
-            "grounding_score": 0.0
-        }
 
     # --------------------------------------------------------
     # CONTEXTUAL QUESTION

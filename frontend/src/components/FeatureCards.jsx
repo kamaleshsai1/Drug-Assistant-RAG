@@ -6,11 +6,6 @@ function FeatureCards({ onFeatureSelect }) {
       description: "Search the web for current information",
     },
     {
-      id: "youtube",
-      title: "YouTube",
-      description: "Find relevant medical videos",
-    },
-    {
       id: "pdf",
       title: "Ask a PDF",
       description: "Ask questions about uploaded documents",
@@ -35,7 +30,7 @@ function FeatureCards({ onFeatureSelect }) {
         width: "min(1050px, calc(100% - 40px))",
         margin: "28px auto 0",
         display: "grid",
-        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
         gap: "12px",
       }}
     >

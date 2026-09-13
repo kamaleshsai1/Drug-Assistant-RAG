@@ -140,7 +140,6 @@ GROQ_API_KEY=your_groq_api_key_here
 PINECONE_API_KEY=your_pinecone_api_key_here
 PINECONE_INDEX_NAME=drug-information
 DRUGASSIST_JWT_SECRET=your_secure_random_secret_here
-YOUTUBE_API_KEY=optional_clinical_video_key
 ```
 
 ---

@@ -1335,48 +1335,6 @@ def get_previous_image_context(
     return ""
 
 
-# ============================================================
-# GET PREVIOUS VIDEOS
-# ============================================================
-
-def get_previous_videos(
-    messages,
-):
-
-    previous_videos = []
-
-    if not messages:
-
-        return previous_videos
-
-    for message in messages:
-
-        raw_videos = message.get(
-            "videos_json",
-            "[]",
-        )
-
-        try:
-
-            parsed_videos = json.loads(
-                raw_videos
-            )
-
-            if isinstance(
-                parsed_videos,
-                list,
-            ):
-
-                previous_videos.extend(
-                    parsed_videos
-                )
-
-        except Exception:
-
-            pass
-
-    return previous_videos
-
 
 # ============================================================
 # CONVERSATION MEMORY HELPERS
@@ -1875,13 +1833,6 @@ async def chat(
         current_chat_id
     )
 
-    # ========================================================
-    # RECOVER PREVIOUS VIDEOS
-    # ========================================================
-
-    previous_videos = get_previous_videos(
-        previous_messages
-    )
 
     # ========================================================
     # RECOVER PREVIOUS IMAGE
@@ -2083,7 +2034,6 @@ async def chat(
         result = await run_in_threadpool(
             answer_question,
             question,
-            previous_videos=previous_videos,
             image_context=effective_image_context,
             conversation_history=conversation_history,
             memories=long_term_memories,
@@ -2251,10 +2201,6 @@ async def chat(
         print(
             "SOURCES:",
             len(sources),
-        )
-        print(
-            "VIDEOS:",
-            len(videos),
         )
         print(
             "GROUNDING SCORE:",

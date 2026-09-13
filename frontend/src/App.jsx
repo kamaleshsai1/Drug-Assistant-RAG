@@ -436,7 +436,6 @@ function App() {
           role: item.role,
           content: item.content,
           sources: item.sources || [],
-          videos: item.videos || [],
           attachments: item.attachments || [],
           evidence: item.evidence || [],
           confidence: item.confidence,
@@ -1918,7 +1917,7 @@ function App() {
         /*
           CLEAN NEW-CHAT SCREEN
           ----------------------------------------------------------
-          No Web Search / YouTube / PDF / SQL / Image cards.
+          No Web Search / PDF / SQL / Image cards.
           The capabilities remain available through the composer
           and backend; they are simply not displayed as cards.
         */

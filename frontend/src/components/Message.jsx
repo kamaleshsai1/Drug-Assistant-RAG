@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { FileText, Play, ExternalLink, Copy, Check } from "lucide-react";
+import { FileText, Copy, Check } from "lucide-react";
 
 function Message({ message }) {
   const isUser = message?.role === "user";
@@ -11,9 +11,6 @@ function Message({ message }) {
     ? message.sources
     : [];
 
-  const videos = Array.isArray(message?.videos)
-    ? message.videos
-    : [];
 
   const answer =
     message?.content ||
@@ -167,75 +164,6 @@ function Message({ message }) {
               </section>
             )}
 
-            {/* ================================================= */}
-            {/* YOUTUBE VIDEOS */}
-            {/* ================================================= */}
-
-            {videos.length > 0 && (
-              <section className="videos-section">
-
-                <div className="videos-heading">
-                  <Play size={13} strokeWidth={2} fill="currentColor" />
-                  <span>
-                    Recommended videos
-                  </span>
-                </div>
-
-                <div className="videos-list">
-
-                  {videos.map(
-                    (video, index) => (
-
-                      <a
-                        className="video-card"
-                        href={video.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        key={
-                          video.video_id ||
-                          video.url ||
-                          index
-                        }
-                      >
-
-                        {/* Thumbnail */}
-                        {video.thumbnail && (
-                          <img
-                            className="video-thumbnail"
-                            src={video.thumbnail}
-                            alt={
-                              video.title ||
-                              "YouTube video"
-                            }
-                            loading="lazy"
-                          />
-                        )}
-
-                        <div className="video-info">
-
-                          <div className="video-title">
-                            {video.title ||
-                              "Educational video"}
-                          </div>
-
-                          <div className="video-channel">
-                            {video.channel ||
-                              "YouTube"}
-                          </div>
-
-                        </div>
-
-                        <ExternalLink size={14} className="video-arrow" />
-
-                      </a>
-
-                    )
-                  )}
-
-                </div>
-
-              </section>
-            )}
 
             <div className="message-actions">
               <button
