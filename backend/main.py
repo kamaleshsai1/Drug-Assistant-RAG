@@ -233,22 +233,26 @@ def health():
 def root(request: Request):
 
     accept = request.headers.get("accept", "").lower()
-    if "text/html" in accept:
-        return HTMLResponse(
-            content=render_backend_console(),
-            status_code=200,
+    format_param = request.query_params.get("format", "").lower()
+
+    if format_param == "json" or (
+        "application/json" in accept and "text/html" not in accept
+    ):
+        return JSONResponse(
+            content={
+                "name": "DrugAssist",
+                "description": (
+                    "Evidence-first drug information "
+                    "assistant with multimodal RAG"
+                ),
+                "status": "running",
+                "version": "4.0.0",
+            }
         )
 
-    return JSONResponse(
-        content={
-            "name": "DrugAssist",
-            "description": (
-                "Evidence-first drug information "
-                "assistant with multimodal RAG"
-            ),
-            "status": "running",
-            "version": "4.0.0",
-        }
+    return HTMLResponse(
+        content=render_backend_console(),
+        status_code=200,
     )
 
 
@@ -256,26 +260,34 @@ def root(request: Request):
 def privacy(request: Request):
 
     accept = request.headers.get("accept", "").lower()
-    if "text/html" in accept:
-        return HTMLResponse(
-            content=render_privacy_page(),
-            status_code=200,
-        )
+    format_param = request.query_params.get("format", "").lower()
 
-    return JSONResponse(content=get_privacy_data())
+    if format_param == "json" or (
+        "application/json" in accept and "text/html" not in accept
+    ):
+        return JSONResponse(content=get_privacy_data())
+
+    return HTMLResponse(
+        content=render_privacy_page(),
+        status_code=200,
+    )
 
 
 @app.get("/terms")
 def terms(request: Request):
 
     accept = request.headers.get("accept", "").lower()
-    if "text/html" in accept:
-        return HTMLResponse(
-            content=render_terms_page(),
-            status_code=200,
-        )
+    format_param = request.query_params.get("format", "").lower()
 
-    return JSONResponse(content=get_terms_data())
+    if format_param == "json" or (
+        "application/json" in accept and "text/html" not in accept
+    ):
+        return JSONResponse(content=get_terms_data())
+
+    return HTMLResponse(
+        content=render_terms_page(),
+        status_code=200,
+    )
 
 
 @app.get("/favicon.ico")
