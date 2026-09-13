@@ -28,6 +28,7 @@ from fastapi import (
     Request,
 )
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from console import (
     render_backend_console,
@@ -100,8 +101,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ],
-    allow_origin_regex=r"https://.*\.onrender\.com",
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1114,8 +1117,9 @@ async def upload_pdf(
         # INDEX PDF
         # ----------------------------------------------------
 
-        result = index_pdf(
-            file_path
+        result = await run_in_threadpool(
+            index_pdf,
+            file_path,
         )
 
         if not isinstance(
@@ -1600,8 +1604,9 @@ async def chat(
                     # INDEX PDF
                     # ------------------------------------------
 
-                    upload_result = index_pdf(
-                        file_path
+                    upload_result = await run_in_threadpool(
+                        index_pdf,
+                        file_path,
                     )
 
                     if not isinstance(
@@ -2061,7 +2066,8 @@ async def chat(
             len(long_term_memories),
         )
 
-        result = answer_question(
+        result = await run_in_threadpool(
+            answer_question,
             question,
             previous_videos=previous_videos,
             image_context=effective_image_context,

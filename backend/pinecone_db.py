@@ -42,7 +42,7 @@ TOP_K = int(
 )
 
 BATCH_SIZE = int(
-    os.getenv("PINECONE_BATCH_SIZE", "50")
+    os.getenv("PINECONE_BATCH_SIZE", "100")
 )
 
 

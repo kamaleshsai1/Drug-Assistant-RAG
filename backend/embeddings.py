@@ -123,7 +123,8 @@ def generate_embeddings(texts):
 
     raw_embeddings = list(
         embedding_model.embed(
-            cleaned_texts
+            cleaned_texts,
+            batch_size=32,
         )
     )
 
