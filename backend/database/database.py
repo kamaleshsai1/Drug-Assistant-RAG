@@ -999,7 +999,7 @@ def get_user_by_email(
                 password_hash,
                 created_at
             FROM users
-            WHERE email = ?
+            WHERE LOWER(email) = LOWER(?)
             """,
             (
                 email,

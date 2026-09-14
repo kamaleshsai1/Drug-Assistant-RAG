@@ -22,6 +22,7 @@ import Library from "./components/Library";
 import PrivacyPolicy from "./components/PrivacyPolicy";
 import TermsAndConditions from "./components/TermsAndConditions";
 import FAQAccordion from "./components/FAQAccordion";
+import PdfViewerModal from "./components/PdfViewerModal";
 
 import {
   askAURA,
@@ -59,6 +60,11 @@ function App() {
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [activePdfModal, setActivePdfModal] = useState(null);
+
+  const handleOpenCitation = (citationInfo) => {
+    setActivePdfModal(citationInfo);
+  };
 
   // ============================================================
   // THEME MANAGEMENT (Light / Dark)
@@ -1211,7 +1217,9 @@ function App() {
               "assistant",
 
             content:
-              `PDF upload failed.\n\n${error.message}`
+              error.message?.startsWith("PDF upload failed.")
+                ? error.message
+                : `PDF upload failed.\n\n${error.message || "Unable to upload PDF."}`
 
           }
 
@@ -2087,6 +2095,7 @@ function App() {
             onBack={handleOpenChat}
             selectedDocumentId={selectedDocumentId}
             onSelectDocument={handleSelectDocument}
+            onViewPdf={handleOpenCitation}
           />
         ) : (
           <div
@@ -2130,6 +2139,7 @@ function App() {
               <ChatWindow
                 messages={messages}
                 loading={loading}
+                onOpenCitation={handleOpenCitation}
               />
             )}
 
@@ -2226,7 +2236,17 @@ function App() {
         <TermsAndConditions onClose={() => setShowTerms(false)} />
       )}
 
-
+      {activePdfModal && (
+        <PdfViewerModal
+          isOpen={Boolean(activePdfModal)}
+          onClose={() => setActivePdfModal(null)}
+          apiUrl={API_BASE_URL}
+          documentId={activePdfModal.documentId}
+          initialPage={activePdfModal.page}
+          title={activePdfModal.title}
+          drug={activePdfModal.drug}
+        />
+      )}
 
     </div>
 

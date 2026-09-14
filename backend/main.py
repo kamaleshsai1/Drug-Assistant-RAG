@@ -27,8 +27,9 @@ from fastapi import (
     Form,
     Request,
 )
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
 from starlette.concurrency import run_in_threadpool
+from pdf_authenticator import authenticate_pdf_document
 
 from console import (
     render_backend_console,
@@ -54,6 +55,7 @@ from rag import (
 from pinecone_db import index_pdf
 
 from database.database import (
+    get_connection,
     init_database,
     create_user,
     get_user_by_email,
@@ -807,6 +809,99 @@ def remove_document(
 
 
 # ============================================================
+# LIBRARY - VIEW / SERVE PDF DOCUMENT
+# ============================================================
+
+@app.get("/documents/{document_identifier}/pdf")
+@app.get("/documents/{document_identifier}/view")
+def view_document_pdf(
+    document_identifier: str,
+    page: Optional[int] = None,
+):
+    """
+    Streams the requested PDF file inline so browser and iframes
+    can render it natively, jumping directly to #page=N.
+    """
+    file_path = None
+    original_filename = None
+
+    # 1. Search in database
+    connection = get_connection()
+    cursor = connection.cursor()
+    try:
+        if document_identifier.isdigit():
+            cursor.execute(
+                "SELECT file_path, filename FROM documents WHERE id = ?",
+                (int(document_identifier),)
+            )
+            row = cursor.fetchone()
+            if row:
+                file_path = row["file_path"]
+                original_filename = row["filename"]
+
+        if not file_path:
+            cursor.execute(
+                """
+                SELECT file_path, filename FROM documents
+                WHERE document_id = ? OR document_key = ? OR stored_filename = ? OR filename = ?
+                ORDER BY id DESC
+                """,
+                (document_identifier, document_identifier, document_identifier, document_identifier)
+            )
+            row = cursor.fetchone()
+            if row:
+                file_path = row["file_path"]
+                original_filename = row["filename"]
+    except Exception as db_err:
+        print("DB lookup warning in view_document_pdf:", db_err)
+    finally:
+        connection.close()
+
+    # 2. Check filesystem if DB path was missing or outdated
+    if not file_path or not os.path.exists(file_path):
+        clean_name = os.path.basename(document_identifier)
+        for check_dir in [PDF_FOLDER, UPLOAD_FOLDER]:
+            if not os.path.isdir(check_dir):
+                continue
+            direct_candidate = os.path.join(check_dir, clean_name)
+            if os.path.isfile(direct_candidate):
+                file_path = direct_candidate
+                break
+            # Match by suffix or substring
+            for f in os.listdir(check_dir):
+                if f.lower().endswith(".pdf") and (clean_name.lower() in f.lower() or f.lower().endswith(clean_name.lower())):
+                    file_path = os.path.join(check_dir, f)
+                    break
+            if file_path and os.path.exists(file_path):
+                break
+
+    # 3. Fallback to default drug.pdf
+    if not file_path or not os.path.exists(file_path):
+        default_file = os.path.join(UPLOAD_FOLDER, "drug.pdf")
+        if os.path.isfile(default_file):
+            file_path = default_file
+
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"PDF document '{document_identifier}' not found."
+        )
+
+    download_name = original_filename or os.path.basename(file_path)
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=download_name,
+        headers={
+            "Content-Disposition": f'inline; filename="{download_name}"',
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        }
+    )
+
+
+# ============================================================
 # BASIC ASK ENDPOINT
 # ============================================================
 
@@ -1128,6 +1223,26 @@ async def upload_pdf(
         )
 
         # ----------------------------------------------------
+        # AUTHENTICATE PDF (Trusted Source & Adversarial Checks)
+        # ----------------------------------------------------
+        auth_result = authenticate_pdf_document(
+            file_path,
+            original_filename=original_filename,
+        )
+
+        if not auth_result.get("is_authentic"):
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
+
+            raise HTTPException(
+                status_code=400,
+                detail=auth_result.get("detail", "PDF upload failed. Authentication failed."),
+            )
+
+        # ----------------------------------------------------
         # INDEX PDF
         # ----------------------------------------------------
 
@@ -1185,6 +1300,8 @@ async def upload_pdf(
             ),
         }
 
+    except HTTPException:
+        raise
     except Exception as error:
 
         print()
@@ -1571,6 +1688,42 @@ async def chat(
                         "CHAT ID:",
                         current_chat_id,
                     )
+
+                    # ------------------------------------------
+                    # AUTHENTICATE PDF
+                    # ------------------------------------------
+                    auth_result = authenticate_pdf_document(
+                        file_path,
+                        original_filename=filename,
+                    )
+
+                    if not auth_result.get("is_authentic"):
+                        if os.path.exists(file_path):
+                            try:
+                                os.remove(file_path)
+                            except Exception:
+                                pass
+
+                        error_msg = auth_result.get(
+                            "detail",
+                            "PDF upload failed.\n\nThis PDF contains suspicious instruction-like content and cannot be used as a DrugAssist evidence."
+                        )
+
+                        add_message(
+                            chat_id=current_chat_id,
+                            role="assistant",
+                            content=error_msg,
+                            sources_json="[]",
+                        )
+
+                        return {
+                            "success": False,
+                            "chat_id": current_chat_id,
+                            "question": question or f"Uploading {filename}...",
+                            "answer": error_msg,
+                            "sources": [],
+                            "error": error_msg,
+                        }
 
                     # ------------------------------------------
                     # INDEX PDF

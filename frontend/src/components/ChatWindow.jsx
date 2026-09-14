@@ -1,7 +1,7 @@
 import React from "react";
 import Message from "./Message";
 
-function ChatWindow({ messages = [], loading = false }) {
+function ChatWindow({ messages = [], loading = false, onOpenCitation }) {
   return (
     <div className="chat-window">
       <div className="messages">
@@ -30,6 +30,7 @@ function ChatWindow({ messages = [], loading = false }) {
                 `${message.role || "message"}-${index}`
               }
               message={message}
+              onOpenCitation={onOpenCitation}
             />
           ))
         )}

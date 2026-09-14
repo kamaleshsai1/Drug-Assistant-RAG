@@ -8,10 +8,11 @@ import {
   X,
   MessageSquare,
   Check,
+  ExternalLink,
 } from "lucide-react";
 import ConfirmationModal from "./ConfirmationModal";
 
-function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId }) {
+function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId, onViewPdf }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -324,6 +325,26 @@ function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId }
                               Active
                             </span>
                           )}
+
+                          <button
+                            type="button"
+                            className="document-delete"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (typeof onViewPdf === "function") {
+                                onViewPdf({
+                                  documentId: document.document_id || document.id,
+                                  page: 1,
+                                  title: document.filename || document.drug_name || "Prescribing Information",
+                                  drug: document.drug_name || "",
+                                });
+                              }
+                            }}
+                            title="View PDF"
+                            aria-label="View PDF"
+                          >
+                            <ExternalLink size={15} />
+                          </button>
 
                           <button
                             type="button"
