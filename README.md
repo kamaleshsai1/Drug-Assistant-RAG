@@ -21,7 +21,7 @@ DB](https://img.shields.io/badge/Vector%20DB-Pinecone-000000)](https://www.pinec
 -   **Swagger / OpenAPI:**
     https://drug-assist-agentic-rag.onrender.com/docs
 -   **GitHub:**
-    https://github.com/Deekshitha-Gajjala/Drug-Assist-Agentic-RAG
+    https://github.com/kamaleshsai1/Drug-Assistant-RAG
 
 ## 📌 Overview
 
