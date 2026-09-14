@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "name": "deekshitha",
+    "email": "dgajjala576@gmail.com",
+    "password_hash": "$2b$12$GNTYNYlPury92y.N5dc/7eNm.2rdZdrz01.REFOsDn583Yet8vy4q",
+    "created_at": "2026-09-12T05:00:01.544090+00:00"
+  },
+  {
+    "id": 2,
+    "name": "mm",
+    "email": "mm@gmail.com",
+    "password_hash": "$2b$12$5TV0TTEnpUaqkqnOd4NTYOCNa0fCEf9atjymBFV49LWZw6U93nmRm",
+    "created_at": "2026-09-12T17:27:51.483755+00:00"
+  },
+  {
+    "id": 3,
+    "name": "Evaluator",
+    "email": "evaluator@gitam.edu",
+    "password_hash": "$2b$12$DOlC.JSizGvZkD8w.2SIZeKH7FwLnRtTCjVekHcaGVjLGdf8G3erq",
+    "created_at": "2026-09-12T18:20:22.888624+00:00"
+  }
+]

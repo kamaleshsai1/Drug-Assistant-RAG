@@ -41,6 +41,11 @@ DB_PATH = os.path.join(
     "drugassist.db"
 )
 
+USERS_BACKUP_PATH = os.path.join(
+    BASE_DIR,
+    "users_backup.json"
+)
+
 
 # ============================================================
 # DATABASE CONNECTION
@@ -929,9 +934,196 @@ def init_database():
 
         connection.commit()
 
+        # Automatically restore/seed persistent accounts from users_backup.json
+        _restore_users_from_backup(connection)
+
     finally:
 
         connection.close()
+
+
+# ============================================================
+# USER PERSISTENCE & BACKUP HELPERS
+# ============================================================
+
+def _restore_users_from_backup(connection=None):
+    """
+    Restore registered users from users_backup.json into SQLite.
+    Also queries GitHub Contents API if GITHUB_TOKEN is available
+    to ensure users registered during previous Render runs are recovered.
+    """
+    github_token = os.getenv("GITHUB_TOKEN")
+    if github_token:
+        try:
+            import urllib.request
+            import base64
+            repo = os.getenv("GITHUB_REPOSITORY", "kamaleshsai1/Drug-Assistant-RAG")
+            url = f"https://api.github.com/repos/{repo}/contents/backend/database/users_backup.json"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "Authorization": f"token {github_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                    "User-Agent": "DrugAssist-Backend"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    gh_data = json.loads(resp.read().decode("utf-8"))
+                    content_str = base64.b64decode(gh_data["content"]).decode("utf-8")
+                    remote_users = json.loads(content_str)
+                    if isinstance(remote_users, list) and len(remote_users) > 0:
+                        with open(USERS_BACKUP_PATH, "w", encoding="utf-8") as f:
+                            json.dump(remote_users, f, indent=2)
+                        print(f"[DrugAssist Persistence] Restored {len(remote_users)} users from GitHub cloud backup.")
+        except Exception as e:
+            pass
+
+    if not os.path.exists(USERS_BACKUP_PATH):
+        return
+
+    try:
+        with open(USERS_BACKUP_PATH, "r", encoding="utf-8") as f:
+            users_list = json.load(f)
+    except Exception as e:
+        print(f"[DrugAssist Persistence] Error reading users_backup.json: {e}")
+        return
+
+    if not isinstance(users_list, list):
+        return
+
+    close_conn = False
+    if connection is None:
+        connection = get_connection()
+        close_conn = True
+
+    cursor = connection.cursor()
+    try:
+        for u in users_list:
+            email = str(u.get("email", "")).strip().lower()
+            name = str(u.get("name", "")).strip() or "User"
+            pwd_hash = u.get("password_hash", "")
+            created_at = u.get("created_at") or _now()
+
+            if not email or not pwd_hash:
+                continue
+
+            cursor.execute(
+                "SELECT id, password_hash FROM users WHERE LOWER(email) = LOWER(?)",
+                (email,)
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                cursor.execute(
+                    """
+                    INSERT INTO users (name, email, password_hash, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (name, email, pwd_hash, created_at)
+                )
+                print(f"[DrugAssist Persistence] Restored account: {email}")
+            elif existing["password_hash"] != pwd_hash:
+                cursor.execute(
+                    "UPDATE users SET password_hash = ?, name = ? WHERE LOWER(email) = LOWER(?)",
+                    (pwd_hash, name, email)
+                )
+        connection.commit()
+    finally:
+        if close_conn:
+            connection.close()
+
+
+def _sync_user_to_backup(name: str, email: str, password_hash: str, created_at: str):
+    """
+    Saves user to users_backup.json and asynchronously syncs to GitHub API if configured.
+    """
+    users_list = []
+    if os.path.exists(USERS_BACKUP_PATH):
+        try:
+            with open(USERS_BACKUP_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    users_list = data
+        except Exception:
+            users_list = []
+
+    clean_email = email.strip().lower()
+    found = False
+    for u in users_list:
+        if str(u.get("email", "")).strip().lower() == clean_email:
+            u["name"] = name
+            u["password_hash"] = password_hash
+            u["created_at"] = created_at
+            found = True
+            break
+    if not found:
+        users_list.append({
+            "name": name,
+            "email": clean_email,
+            "password_hash": password_hash,
+            "created_at": created_at
+        })
+
+    try:
+        with open(USERS_BACKUP_PATH, "w", encoding="utf-8") as f:
+            json.dump(users_list, f, indent=2)
+    except Exception as e:
+        print(f"[DrugAssist Persistence] Error writing users_backup.json: {e}")
+
+    # Cloud sync in non-blocking background thread
+    github_token = os.getenv("GITHUB_TOKEN")
+    if github_token:
+        import threading
+        def _bg_push():
+            try:
+                import urllib.request
+                import base64
+                repo = os.getenv("GITHUB_REPOSITORY", "kamaleshsai1/Drug-Assistant-RAG")
+                url = f"https://api.github.com/repos/{repo}/contents/backend/database/users_backup.json"
+                req_get = urllib.request.Request(
+                    url,
+                    headers={
+                        "Authorization": f"token {github_token}",
+                        "Accept": "application/vnd.github.v3+json",
+                        "User-Agent": "DrugAssist-Backend"
+                    }
+                )
+                sha = None
+                try:
+                    with urllib.request.urlopen(req_get, timeout=5) as resp:
+                        if resp.status == 200:
+                            current_file = json.loads(resp.read().decode("utf-8"))
+                            sha = current_file.get("sha")
+                except Exception:
+                    pass
+
+                content_bytes = json.dumps(users_list, indent=2).encode("utf-8")
+                b64_content = base64.b64encode(content_bytes).decode("utf-8")
+                put_data = {
+                    "message": f"persist: auto-sync user {clean_email}",
+                    "content": b64_content,
+                    "branch": "main"
+                }
+                if sha:
+                    put_data["sha"] = sha
+
+                req_put = urllib.request.Request(
+                    url,
+                    data=json.dumps(put_data).encode("utf-8"),
+                    headers={
+                        "Authorization": f"token {github_token}",
+                        "Accept": "application/vnd.github.v3+json",
+                        "Content-Type": "application/json",
+                        "User-Agent": "DrugAssist-Backend"
+                    },
+                    method="PUT"
+                )
+                with urllib.request.urlopen(req_put, timeout=8) as put_resp:
+                    print(f"[DrugAssist Persistence] Synced {clean_email} to GitHub cloud backup: {put_resp.status}")
+            except Exception as e:
+                print(f"[DrugAssist Persistence] Notice syncing to GitHub: {e}")
+
+        threading.Thread(target=_bg_push, daemon=True).start()
 
 
 # ============================================================
@@ -948,6 +1140,9 @@ def create_user(
 
     cursor = connection.cursor()
 
+    now_time = _now()
+    clean_email = email.strip().lower()
+
     try:
 
         cursor.execute(
@@ -963,15 +1158,22 @@ def create_user(
             """,
             (
                 name,
-                email,
+                clean_email,
                 password_hash,
-                _now()
+                now_time
             )
         )
 
         user_id = cursor.lastrowid
 
         connection.commit()
+
+        _sync_user_to_backup(
+            name=name,
+            email=clean_email,
+            password_hash=password_hash,
+            created_at=now_time
+        )
 
         return user_id
 

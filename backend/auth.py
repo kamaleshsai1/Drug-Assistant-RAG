@@ -44,7 +44,7 @@ JWT_SECRET = os.getenv(
 
 JWT_ALGORITHM = "HS256"
 
-TOKEN_EXPIRE_HOURS = 24
+TOKEN_EXPIRE_HOURS = 24 * 30  # 30 days for seamless persistent login
 
 
 # ============================================================
