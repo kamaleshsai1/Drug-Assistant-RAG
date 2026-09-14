@@ -36,19 +36,14 @@ function AuthPage({ onLogin }) {
     setError("");
     setSuccess("");
 
-    if (!email.trim()) {
-      setError("Please enter your email address.");
-      return;
-    }
-
-    if (!password) {
-      setError("Please enter your password.");
-      return;
-    }
-
     if (mode === "register") {
       if (!username.trim()) {
         setError("Please enter a username.");
+        return;
+      }
+
+      if (!email.trim()) {
+        setError("Please enter your email address.");
         return;
       }
 
@@ -61,17 +56,72 @@ function AuthPage({ onLogin }) {
         setError("Passwords do not match.");
         return;
       }
+    } else {
+      if (!email.trim()) {
+        setError("Please enter your email or username.");
+        return;
+      }
+    }
+
+    if (!password) {
+      setError("Please enter your password.");
+      return;
     }
 
     try {
       setLoading(true);
 
       if (mode === "register") {
-        await registerUser(
+        const regData = await registerUser(
           username.trim(),
           email.trim(),
           password
         );
+
+        // Seamless auto-login right after registration
+        let authData = regData;
+        if (!authData?.access_token) {
+          authData = await loginUser(
+            email.trim(),
+            password
+          );
+        }
+
+        const token =
+          authData?.access_token ||
+          authData?.token ||
+          authData?.jwt;
+
+        if (token) {
+          localStorage.setItem(
+            "aura_token",
+            token
+          );
+          localStorage.setItem(
+            "token",
+            token
+          );
+
+          if (authData.user) {
+            localStorage.setItem(
+              "aura_user",
+              JSON.stringify(authData.user)
+            );
+          } else {
+            localStorage.setItem(
+              "aura_user",
+              JSON.stringify({
+                email: email.trim(),
+                name: username.trim(),
+              })
+            );
+          }
+
+          if (typeof onLogin === "function") {
+            onLogin(authData);
+          }
+          return;
+        }
 
         setSuccess(
           "Account created successfully. You can now log in."
@@ -96,9 +146,6 @@ function AuthPage({ onLogin }) {
        *   token_type: "bearer",
        *   user: {...}
        * }
-       *
-       * We support the common token field names so
-       * the frontend remains compatible.
        */
 
       const token =
@@ -114,6 +161,10 @@ function AuthPage({ onLogin }) {
 
       localStorage.setItem(
         "aura_token",
+        token
+      );
+      localStorage.setItem(
+        "token",
         token
       );
 
@@ -493,19 +544,19 @@ function AuthPage({ onLogin }) {
               className="auth-label"
               htmlFor="auth-email"
             >
-              Email
+              {mode === "login" ? "Email or Username" : "Email"}
             </label>
 
             <input
               id="auth-email"
               className="auth-input"
-              type="email"
+              type={mode === "login" ? "text" : "email"}
               value={email}
               onChange={(event) =>
                 setEmail(event.target.value)
               }
-              placeholder="Enter your email"
-              autoComplete="email"
+              placeholder={mode === "login" ? "Enter your email or username" : "Enter your email"}
+              autoComplete={mode === "login" ? "username" : "email"}
               disabled={loading}
             />
 

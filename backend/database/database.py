@@ -952,6 +952,16 @@ def _restore_users_from_backup(connection=None):
     Also queries GitHub Contents API if GITHUB_TOKEN is available
     to ensure users registered during previous Render runs are recovered.
     """
+    local_users = []
+    if os.path.exists(USERS_BACKUP_PATH):
+        try:
+            with open(USERS_BACKUP_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    local_users = data
+        except Exception as e:
+            print(f"[DrugAssist Persistence] Error reading users_backup.json: {e}")
+
     github_token = os.getenv("GITHUB_TOKEN")
     if github_token:
         try:
@@ -973,23 +983,19 @@ def _restore_users_from_backup(connection=None):
                     content_str = base64.b64decode(gh_data["content"]).decode("utf-8")
                     remote_users = json.loads(content_str)
                     if isinstance(remote_users, list) and len(remote_users) > 0:
+                        merged = {str(u.get("email", "")).strip().lower(): u for u in remote_users if u.get("email")}
+                        for lu in local_users:
+                            lu_email = str(lu.get("email", "")).strip().lower()
+                            if lu_email:
+                                merged[lu_email] = lu
+                        local_users = list(merged.values())
                         with open(USERS_BACKUP_PATH, "w", encoding="utf-8") as f:
-                            json.dump(remote_users, f, indent=2)
-                        print(f"[DrugAssist Persistence] Restored {len(remote_users)} users from GitHub cloud backup.")
+                            json.dump(local_users, f, indent=2)
+                        print(f"[DrugAssist Persistence] Restored {len(local_users)} merged users with GitHub cloud backup.")
         except Exception as e:
             pass
 
-    if not os.path.exists(USERS_BACKUP_PATH):
-        return
-
-    try:
-        with open(USERS_BACKUP_PATH, "r", encoding="utf-8") as f:
-            users_list = json.load(f)
-    except Exception as e:
-        print(f"[DrugAssist Persistence] Error reading users_backup.json: {e}")
-        return
-
-    if not isinstance(users_list, list):
+    if not local_users:
         return
 
     close_conn = False
@@ -999,7 +1005,8 @@ def _restore_users_from_backup(connection=None):
 
     cursor = connection.cursor()
     try:
-        for u in users_list:
+        for u in local_users:
+            u_id = u.get("id")
             email = str(u.get("email", "")).strip().lower()
             name = str(u.get("name", "")).strip() or "User"
             pwd_hash = u.get("password_hash", "")
@@ -1014,13 +1021,22 @@ def _restore_users_from_backup(connection=None):
             )
             existing = cursor.fetchone()
             if not existing:
-                cursor.execute(
-                    """
-                    INSERT INTO users (name, email, password_hash, created_at)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (name, email, pwd_hash, created_at)
-                )
+                if u_id is not None:
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO users (id, name, email, password_hash, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (u_id, name, email, pwd_hash, created_at)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO users (name, email, password_hash, created_at)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (name, email, pwd_hash, created_at)
+                    )
                 print(f"[DrugAssist Persistence] Restored account: {email}")
             elif existing["password_hash"] != pwd_hash:
                 cursor.execute(
@@ -1033,7 +1049,7 @@ def _restore_users_from_backup(connection=None):
             connection.close()
 
 
-def _sync_user_to_backup(name: str, email: str, password_hash: str, created_at: str):
+def _sync_user_to_backup(user_id: int, name: str, email: str, password_hash: str, created_at: str):
     """
     Saves user to users_backup.json and asynchronously syncs to GitHub API if configured.
     """
@@ -1051,6 +1067,7 @@ def _sync_user_to_backup(name: str, email: str, password_hash: str, created_at: 
     found = False
     for u in users_list:
         if str(u.get("email", "")).strip().lower() == clean_email:
+            u["id"] = user_id
             u["name"] = name
             u["password_hash"] = password_hash
             u["created_at"] = created_at
@@ -1058,6 +1075,7 @@ def _sync_user_to_backup(name: str, email: str, password_hash: str, created_at: 
             break
     if not found:
         users_list.append({
+            "id": user_id,
             "name": name,
             "email": clean_email,
             "password_hash": password_hash,
@@ -1169,6 +1187,7 @@ def create_user(
         connection.commit()
 
         _sync_user_to_backup(
+            user_id=user_id,
             name=name,
             email=clean_email,
             password_hash=password_hash,
@@ -1192,6 +1211,8 @@ def get_user_by_email(
 
     try:
 
+        clean_target = str(email or "").strip().lower()
+
         cursor.execute(
             """
             SELECT
@@ -1201,10 +1222,12 @@ def get_user_by_email(
                 password_hash,
                 created_at
             FROM users
-            WHERE LOWER(email) = LOWER(?)
+            WHERE LOWER(email) = ? OR LOWER(name) = ?
+            LIMIT 1
             """,
             (
-                email,
+                clean_target,
+                clean_target,
             )
         )
 

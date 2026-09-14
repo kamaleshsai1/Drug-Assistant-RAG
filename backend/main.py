@@ -477,9 +477,15 @@ def register(
         password_hash=password_hash,
     )
 
+    token = create_access_token(
+        user_id
+    )
+
     return {
         "success": True,
         "message": "Registration successful.",
+        "access_token": token,
+        "token_type": "bearer",
         "user": {
             "id": user_id,
             "name": name,

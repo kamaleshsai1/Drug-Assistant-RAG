@@ -30,7 +30,9 @@ import {
   deletePDF,
   askImage,
   voiceAsk,
-  getDocumentPDF
+  getDocumentPDF,
+  getCurrentUser,
+  clearAuth
 } from "./services/api";
 
 
@@ -46,7 +48,7 @@ function App() {
   // ============================================================
 
   const [isAuthenticated, setIsAuthenticated] = useState(
-    Boolean(localStorage.getItem("aura_token"))
+    Boolean(localStorage.getItem("aura_token") || localStorage.getItem("token"))
   );
 
   const [user, setUser] = useState(() => {
@@ -57,6 +59,51 @@ function App() {
       return null;
     }
   });
+
+  const isAuthError = (err) => {
+    const msg = String(err?.message || "").toLowerCase();
+    return (
+      msg.includes("session") ||
+      msg.includes("expired") ||
+      msg.includes("unauthorized") ||
+      msg.includes("token") ||
+      msg.includes("not found") ||
+      msg.includes("not logged in") ||
+      msg.includes("401")
+    );
+  };
+
+  // Verify session with server on startup
+  useEffect(() => {
+    const token =
+      localStorage.getItem("aura_token") ||
+      localStorage.getItem("token");
+
+    if (!token) {
+      setIsAuthenticated(false);
+      setUser(null);
+      return;
+    }
+
+    getCurrentUser()
+      .then((userData) => {
+        const currentUser = userData?.user || userData;
+        if (currentUser?.id || currentUser?.email) {
+          setUser(currentUser);
+          setIsAuthenticated(true);
+          localStorage.setItem(
+            "aura_user",
+            JSON.stringify(currentUser)
+          );
+        }
+      })
+      .catch((err) => {
+        if (isAuthError(err)) {
+          console.warn("Stored session is invalid, resetting:", err);
+          handleLogout();
+        }
+      });
+  }, []);
 
 
   // ============================================================
@@ -318,11 +365,7 @@ function App() {
         error
       );
 
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
+      if (isAuthError(error)) {
         handleLogout();
       }
     }
@@ -385,11 +428,7 @@ function App() {
         error
       );
 
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
+      if (isAuthError(error)) {
         handleLogout();
       }
     }
@@ -489,11 +528,7 @@ function App() {
         error
       );
 
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
+      if (isAuthError(error)) {
         handleLogout();
         return;
       }
@@ -835,11 +870,16 @@ const handleOpenSource = async (
   // LOGIN
   // ============================================================
 
-  const handleLogin = () => {
+  const handleLogin = (authData) => {
 
     const token =
+      authData?.access_token ||
+      authData?.token ||
       localStorage.getItem(
         "aura_token"
+      ) ||
+      localStorage.getItem(
+        "token"
       );
 
 
@@ -852,19 +892,36 @@ const handleOpenSource = async (
       return;
     }
 
+    localStorage.setItem(
+      "aura_token",
+      token
+    );
+    localStorage.setItem(
+      "token",
+      token
+    );
+
 
     try {
 
-      const storedUser =
-        localStorage.getItem(
-          "aura_user"
+      if (authData?.user) {
+        setUser(authData.user);
+        localStorage.setItem(
+          "aura_user",
+          JSON.stringify(authData.user)
         );
+      } else {
+        const storedUser =
+          localStorage.getItem(
+            "aura_user"
+          );
 
-      setUser(
-        storedUser
-          ? JSON.parse(storedUser)
-          : null
-      );
+        setUser(
+          storedUser
+            ? JSON.parse(storedUser)
+            : null
+        );
+      }
 
     } catch {
 
@@ -888,10 +945,13 @@ const handleOpenSource = async (
 
   const handleLogout = () => {
 
+    clearAuth();
     localStorage.removeItem(
       "aura_token"
     );
-
+    localStorage.removeItem(
+      "token"
+    );
     localStorage.removeItem(
       "aura_user"
     );
@@ -947,6 +1007,9 @@ const handleOpenSource = async (
         }
 
       } catch {}
+
+      mediaRecorderRef.current =
+        null;
     }
 
 
@@ -1038,11 +1101,7 @@ const handleOpenSource = async (
       );
 
 
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
+      if (isAuthError(error)) {
         handleLogout();
       }
     }
@@ -1089,11 +1148,7 @@ const handleOpenSource = async (
       );
 
 
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
+      if (isAuthError(error)) {
         handleLogout();
       }
     }
@@ -1123,11 +1178,7 @@ const handleOpenSource = async (
         );
 
 
-        if (
-          error.message?.includes(
-            "session has expired"
-          )
-        ) {
+        if (isAuthError(error)) {
           handleLogout();
         }
       }
@@ -1317,12 +1368,7 @@ const handleOpenSource = async (
       );
 
 
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
-
+      if (isAuthError(error)) {
         handleLogout();
         return;
       }
@@ -1561,12 +1607,7 @@ const handleOpenSource = async (
       );
 
 
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
-
+      if (isAuthError(error)) {
         handleLogout();
         return;
       }

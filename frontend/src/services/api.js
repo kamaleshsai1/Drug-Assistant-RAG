@@ -5,16 +5,17 @@ const API_BASE_URL =
 // HELPERS
 // =========================================================
 
-function getToken() {
+export function getToken() {
   return (
     localStorage.getItem("token") ||
     localStorage.getItem("aura_token")
   );
 }
 
-function clearAuth() {
+export function clearAuth() {
   localStorage.removeItem("token");
   localStorage.removeItem("aura_token");
+  localStorage.removeItem("aura_user");
 }
 
 function authHeaders(extra = {}) {
@@ -40,6 +41,10 @@ async function parseResponse(response) {
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAuth();
+    }
+
     const detail =
       data?.detail ||
       data?.message ||
@@ -84,20 +89,32 @@ export async function registerUser(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        name,
-        email,
+        name: (name || "").trim(),
+        email: (email || "").trim(),
         password,
       }),
     }
   );
 
-  return parseResponse(response);
+  const data = await parseResponse(response);
+
+  const token = data?.access_token || data?.token || data?.jwt;
+  if (token) {
+    localStorage.setItem("token", token);
+    localStorage.setItem("aura_token", token);
+  }
+  if (data?.user) {
+    localStorage.setItem("aura_user", JSON.stringify(data.user));
+  }
+
+  return data;
 }
 
 export async function loginUser(
   email,
   password
 ) {
+  const cleanId = (email || "").trim();
   const response = await fetch(
     `${API_BASE_URL}/login`,
     {
@@ -106,7 +123,8 @@ export async function loginUser(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        email,
+        email: cleanId,
+        username: cleanId,
         password,
       }),
     }
@@ -114,16 +132,19 @@ export async function loginUser(
 
   const data = await parseResponse(response);
 
-  if (data?.access_token) {
+  const token = data?.access_token || data?.token || data?.jwt;
+  if (token) {
+    localStorage.setItem("token", token);
+    localStorage.setItem("aura_token", token);
+  }
+  if (data?.user) {
+    localStorage.setItem("aura_user", JSON.stringify(data.user));
+  } else if (cleanId) {
     localStorage.setItem(
-      "token",
-      data.access_token
-    );
-
-    // Keep compatibility with the rest of the app
-    localStorage.setItem(
-      "aura_token",
-      data.access_token
+      "aura_user",
+      JSON.stringify({
+        email: cleanId,
+      })
     );
   }
 
@@ -702,6 +723,8 @@ export default {
   loginUser,
   getCurrentUser,
   logoutUser,
+  clearAuth,
+  getToken,
 
   // Chats
   getConversations,
