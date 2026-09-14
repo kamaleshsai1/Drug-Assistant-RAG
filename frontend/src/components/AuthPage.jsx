@@ -10,7 +10,13 @@ function AuthPage({ onLogin }) {
   const [showTerms, setShowTerms] = useState(false);
 
   const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => {
+    try {
+      return localStorage.getItem("drugassist_last_email") || "";
+    } catch {
+      return "";
+    }
+  });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -641,9 +647,32 @@ function AuthPage({ onLogin }) {
           )}
 
           {error && (
-            <div className="auth-error" role="alert">
-              <AlertCircle size={16} style={{ flexShrink: 0 }} />
-              <span>{error}</span>
+            <div className="auth-error" role="alert" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{error}</span>
+              </div>
+              {mode === "login" && (
+                <div style={{ fontSize: "12px", paddingLeft: "24px", opacity: 0.95 }}>
+                  Need an account with this email?{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchMode("register")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      color: "#0284c7",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      textDecoration: "underline",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Click to Register
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

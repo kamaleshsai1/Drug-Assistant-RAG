@@ -946,11 +946,40 @@ def init_database():
 # USER PERSISTENCE & BACKUP HELPERS
 # ============================================================
 
+DEFAULT_GITHUB_REPO = "kamaleshsai1/Drug-Assistant-RAG"
+
+def _get_github_token():
+    token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+    if token and token.strip():
+        return token.strip()
+    try:
+        import subprocess
+        res = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False
+        )
+        url = res.stdout.strip()
+        if "@" in url and "://" in url:
+            creds = url.split("://")[1].split("@")[0]
+            if ":" in creds:
+                token_val = creds.split(":")[1].strip()
+                if token_val:
+                    return token_val
+    except Exception:
+        pass
+    return None
+
+def _get_github_repo():
+    return os.getenv("GITHUB_REPOSITORY", DEFAULT_GITHUB_REPO).strip()
+
 def _restore_users_from_backup(connection=None):
     """
     Restore registered users from users_backup.json into SQLite.
-    Also queries GitHub Contents API if GITHUB_TOKEN is available
-    to ensure users registered during previous Render runs are recovered.
+    Also queries GitHub Contents API to ensure users registered
+    during previous Render runs are recovered.
     """
     local_users = []
     if os.path.exists(USERS_BACKUP_PATH):
@@ -962,22 +991,29 @@ def _restore_users_from_backup(connection=None):
         except Exception as e:
             print(f"[DrugAssist Persistence] Error reading users_backup.json: {e}")
 
-    github_token = os.getenv("GITHUB_TOKEN")
+    github_token = _get_github_token()
+    repo = _get_github_repo()
+    url = f"https://api.github.com/repos/{repo}/contents/backend/database/users_backup.json"
+
+    # Try authenticated read first, then unauthenticated public read fallback
+    headers_attempts = []
     if github_token:
+        headers_attempts.append({
+            "Authorization": f"token {github_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "DrugAssist-Backend"
+        })
+    headers_attempts.append({
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "DrugAssist-Backend"
+    })
+
+    for headers in headers_attempts:
         try:
             import urllib.request
             import base64
-            repo = os.getenv("GITHUB_REPOSITORY", "kamaleshsai1/Drug-Assistant-RAG")
-            url = f"https://api.github.com/repos/{repo}/contents/backend/database/users_backup.json"
-            req = urllib.request.Request(
-                url,
-                headers={
-                    "Authorization": f"token {github_token}",
-                    "Accept": "application/vnd.github.v3+json",
-                    "User-Agent": "DrugAssist-Backend"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=6) as resp:
                 if resp.status == 200:
                     gh_data = json.loads(resp.read().decode("utf-8"))
                     content_str = base64.b64decode(gh_data["content"]).decode("utf-8")
@@ -989,11 +1025,15 @@ def _restore_users_from_backup(connection=None):
                             if lu_email:
                                 merged[lu_email] = lu
                         local_users = list(merged.values())
-                        with open(USERS_BACKUP_PATH, "w", encoding="utf-8") as f:
-                            json.dump(local_users, f, indent=2)
-                        print(f"[DrugAssist Persistence] Restored {len(local_users)} merged users with GitHub cloud backup.")
-        except Exception as e:
-            pass
+                        try:
+                            with open(USERS_BACKUP_PATH, "w", encoding="utf-8") as f:
+                                json.dump(local_users, f, indent=2)
+                        except Exception:
+                            pass
+                        print(f"[DrugAssist Persistence] Restored {len(local_users)} merged users from GitHub cloud backup.")
+                        break
+        except Exception:
+            continue
 
     if not local_users:
         return
@@ -1051,7 +1091,7 @@ def _restore_users_from_backup(connection=None):
 
 def _sync_user_to_backup(user_id: int, name: str, email: str, password_hash: str, created_at: str):
     """
-    Saves user to users_backup.json and asynchronously syncs to GitHub API if configured.
+    Saves user to users_backup.json and syncs to GitHub API to ensure permanent persistence.
     """
     users_list = []
     if os.path.exists(USERS_BACKUP_PATH):
@@ -1088,58 +1128,97 @@ def _sync_user_to_backup(user_id: int, name: str, email: str, password_hash: str
     except Exception as e:
         print(f"[DrugAssist Persistence] Error writing users_backup.json: {e}")
 
-    # Cloud sync in non-blocking background thread
-    github_token = os.getenv("GITHUB_TOKEN")
+    # Cloud sync in non-blocking background thread with retries and remote merge
+    github_token = _get_github_token()
     if github_token:
         import threading
         def _bg_push():
             try:
                 import urllib.request
+                import urllib.error
                 import base64
-                repo = os.getenv("GITHUB_REPOSITORY", "kamaleshsai1/Drug-Assistant-RAG")
+                import time
+
+                repo = _get_github_repo()
                 url = f"https://api.github.com/repos/{repo}/contents/backend/database/users_backup.json"
-                req_get = urllib.request.Request(
-                    url,
-                    headers={
-                        "Authorization": f"token {github_token}",
-                        "Accept": "application/vnd.github.v3+json",
-                        "User-Agent": "DrugAssist-Backend"
+
+                for attempt in range(3):
+                    req_get = urllib.request.Request(
+                        url,
+                        headers={
+                            "Authorization": f"token {github_token}",
+                            "Accept": "application/vnd.github.v3+json",
+                            "User-Agent": "DrugAssist-Backend"
+                        }
+                    )
+                    sha = None
+                    remote_users = []
+                    try:
+                        with urllib.request.urlopen(req_get, timeout=8) as resp:
+                            if resp.status == 200:
+                                current_file = json.loads(resp.read().decode("utf-8"))
+                                sha = current_file.get("sha")
+                                raw_c = base64.b64decode(current_file.get("content", "")).decode("utf-8")
+                                remote_users = json.loads(raw_c)
+                    except Exception as ge:
+                        print(f"[DrugAssist Persistence] Notice fetching remote backup: {ge}")
+
+                    merged_map = {}
+                    if isinstance(remote_users, list):
+                        for ru in remote_users:
+                            em = str(ru.get("email", "")).strip().lower()
+                            if em:
+                                merged_map[em] = ru
+                    for lu in users_list:
+                        em = str(lu.get("email", "")).strip().lower()
+                        if em:
+                            merged_map[em] = lu
+
+                    final_users = list(merged_map.values())
+
+                    try:
+                        with open(USERS_BACKUP_PATH, "w", encoding="utf-8") as f:
+                            json.dump(final_users, f, indent=2)
+                    except Exception:
+                        pass
+
+                    content_bytes = json.dumps(final_users, indent=2).encode("utf-8")
+                    b64_content = base64.b64encode(content_bytes).decode("utf-8")
+                    put_data = {
+                        "message": f"persist: auto-sync user {clean_email}",
+                        "content": b64_content,
+                        "branch": "main"
                     }
-                )
-                sha = None
-                try:
-                    with urllib.request.urlopen(req_get, timeout=5) as resp:
-                        if resp.status == 200:
-                            current_file = json.loads(resp.read().decode("utf-8"))
-                            sha = current_file.get("sha")
-                except Exception:
-                    pass
+                    if sha:
+                        put_data["sha"] = sha
 
-                content_bytes = json.dumps(users_list, indent=2).encode("utf-8")
-                b64_content = base64.b64encode(content_bytes).decode("utf-8")
-                put_data = {
-                    "message": f"persist: auto-sync user {clean_email}",
-                    "content": b64_content,
-                    "branch": "main"
-                }
-                if sha:
-                    put_data["sha"] = sha
-
-                req_put = urllib.request.Request(
-                    url,
-                    data=json.dumps(put_data).encode("utf-8"),
-                    headers={
-                        "Authorization": f"token {github_token}",
-                        "Accept": "application/vnd.github.v3+json",
-                        "Content-Type": "application/json",
-                        "User-Agent": "DrugAssist-Backend"
-                    },
-                    method="PUT"
-                )
-                with urllib.request.urlopen(req_put, timeout=8) as put_resp:
-                    print(f"[DrugAssist Persistence] Synced {clean_email} to GitHub cloud backup: {put_resp.status}")
+                    req_put = urllib.request.Request(
+                        url,
+                        data=json.dumps(put_data).encode("utf-8"),
+                        headers={
+                            "Authorization": f"token {github_token}",
+                            "Accept": "application/vnd.github.v3+json",
+                            "Content-Type": "application/json",
+                            "User-Agent": "DrugAssist-Backend"
+                        },
+                        method="PUT"
+                    )
+                    try:
+                        with urllib.request.urlopen(req_put, timeout=10) as put_resp:
+                            if put_resp.status in (200, 201):
+                                print(f"[DrugAssist Persistence] Synced {clean_email} to GitHub cloud backup: {put_resp.status}")
+                                break
+                    except urllib.error.HTTPError as he:
+                        if he.code == 409 and attempt < 2:
+                            time.sleep(1)
+                            continue
+                        print(f"[DrugAssist Persistence] Notice syncing to GitHub: {he}")
+                        break
+                    except Exception as pe:
+                        print(f"[DrugAssist Persistence] Notice syncing to GitHub: {pe}")
+                        break
             except Exception as e:
-                print(f"[DrugAssist Persistence] Notice syncing to GitHub: {e}")
+                print(f"[DrugAssist Persistence] Background push error: {e}")
 
         threading.Thread(target=_bg_push, daemon=True).start()
 
@@ -1234,6 +1313,28 @@ def get_user_by_email(
         row = cursor.fetchone()
 
         if not row:
+            # On-demand sync/restore from cloud backup in case container was restarted
+            _restore_users_from_backup(connection)
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    email,
+                    password_hash,
+                    created_at
+                FROM users
+                WHERE LOWER(email) = ? OR LOWER(name) = ?
+                LIMIT 1
+                """,
+                (
+                    clean_target,
+                    clean_target,
+                )
+            )
+            row = cursor.fetchone()
+
+        if not row:
             return None
 
         return dict(row)
@@ -1269,6 +1370,25 @@ def get_user_by_id(
         )
 
         row = cursor.fetchone()
+
+        if not row:
+            # On-demand sync/restore from cloud backup in case container was restarted
+            _restore_users_from_backup(connection)
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    email,
+                    created_at
+                FROM users
+                WHERE id = ?
+                """,
+                (
+                    user_id,
+                )
+            )
+            row = cursor.fetchone()
 
         if not row:
             return None

@@ -62,14 +62,27 @@ function App() {
 
   const isAuthError = (err) => {
     const msg = String(err?.message || "").toLowerCase();
+    // Do NOT treat server cold-starts, gateway errors, or network errors as auth errors
+    if (
+      msg.includes("failed to fetch") ||
+      msg.includes("network error") ||
+      msg.includes("load failed") ||
+      msg.includes("502") ||
+      msg.includes("503") ||
+      msg.includes("504") ||
+      msg.includes("bad gateway") ||
+      msg.includes("gateway timeout")
+    ) {
+      return false;
+    }
+
     return (
-      msg.includes("session") ||
-      msg.includes("expired") ||
-      msg.includes("unauthorized") ||
-      msg.includes("token") ||
-      msg.includes("not found") ||
-      msg.includes("not logged in") ||
-      msg.includes("401")
+      msg.includes("session expired") ||
+      msg.includes("jwt expired") ||
+      msg.includes("token has expired") ||
+      msg.includes("signature has expired") ||
+      msg.includes("invalid authentication token") ||
+      msg.includes("could not validate credentials")
     );
   };
 
@@ -101,6 +114,8 @@ function App() {
         if (isAuthError(err)) {
           console.warn("Stored session is invalid, resetting:", err);
           handleLogout();
+        } else {
+          console.warn("Backend server may be waking up or offline; retaining cached session:", err);
         }
       });
   }, []);

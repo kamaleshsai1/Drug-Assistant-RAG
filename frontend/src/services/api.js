@@ -41,15 +41,24 @@ async function parseResponse(response) {
   }
 
   if (!response.ok) {
-    if (response.status === 401) {
-      clearAuth();
-    }
-
     const detail =
       data?.detail ||
       data?.message ||
       data?.error ||
       `Request failed with status ${response.status}`;
+
+    const detailStr =
+      typeof detail === "string" ? detail : JSON.stringify(detail);
+
+    // Only clear stored auth credentials on explicit session/token expiration,
+    // NOT on invalid password during login or on server cold-boot / temporary errors
+    if (
+      response.status === 401 &&
+      (detailStr.toLowerCase().includes("session expired") ||
+        detailStr.toLowerCase().includes("invalid authentication token"))
+    ) {
+      clearAuth();
+    }
 
     if (typeof detail === "string") {
       throw new Error(detail);
@@ -81,6 +90,9 @@ export async function registerUser(
   email,
   password
 ) {
+  const cleanEmail = (email || "").trim();
+  const cleanName = (name || "").trim();
+
   const response = await fetch(
     `${API_BASE_URL}/register`,
     {
@@ -89,8 +101,8 @@ export async function registerUser(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        name: (name || "").trim(),
-        email: (email || "").trim(),
+        name: cleanName,
+        email: cleanEmail,
         password,
       }),
     }
@@ -105,6 +117,9 @@ export async function registerUser(
   }
   if (data?.user) {
     localStorage.setItem("aura_user", JSON.stringify(data.user));
+  }
+  if (cleanEmail) {
+    localStorage.setItem("drugassist_last_email", cleanEmail);
   }
 
   return data;
@@ -146,6 +161,9 @@ export async function loginUser(
         email: cleanId,
       })
     );
+  }
+  if (cleanId) {
+    localStorage.setItem("drugassist_last_email", cleanId);
   }
 
   return data;
