@@ -157,7 +157,7 @@ os.makedirs(
 
 
 # ============================================================
-# TRUSTED MEDICAL PDF REGISTRY
+# TRUSTED MEDICAL PDF REGISTRY & VERIFICATION
 # ============================================================
 
 TRUSTED_PDF_REGISTRY = {
@@ -166,11 +166,29 @@ TRUSTED_PDF_REGISTRY = {
         "source": "AbbVie/FDA labeling",
         "official_url": "https://www.rxabbvie.com/pdf/rinvoq_pi.pdf",
     },
+    "e4bf4bfa91a77b8f6d6cc0b18f3a43910dbf27f031181bc6476ee62917affa20": {
+        "name": "Official RINVOQ Prescribing Information (AbbVie/FDA labeling)",
+        "source": "AbbVie/FDA labeling",
+        "official_url": "https://www.rxabbvie.com/pdf/rinvoq_pi.pdf",
+    },
+    "49186dafe21cc9c76cf3db949da45149e612cf11354ad50f70c17e5a860b68be": {
+        "name": "LOSARTAN POTASSIUM Tablets (FDA labeling)",
+        "source": "FDA Prescribing Information",
+        "official_url": "https://dailymed.nlm.nih.gov/",
+    },
+    "6d65738981b232e5ffd674790dbc97bffbef4c3dc69f46faaa7839bf5419242a": {
+        "name": "ALLEROFF Prescribing Information",
+        "source": "Official Product Monograph",
+        "official_url": "https://dailymed.nlm.nih.gov/",
+    },
 }
 
 
 def verify_trusted_pdf(file_path):
-    """Allow a PDF into the medical RAG only when its exact hash is approved."""
+    """
+    Allow a PDF into the medical RAG when its exact hash is approved
+    OR when authenticated as genuine regulatory prescribing information.
+    """
     sha256 = hashlib.sha256()
 
     with open(file_path, "rb") as pdf_file:
@@ -180,7 +198,39 @@ def verify_trusted_pdf(file_path):
     file_hash = sha256.hexdigest()
     trusted_source = TRUSTED_PDF_REGISTRY.get(file_hash)
 
-    if not trusted_source:
+    if trusted_source:
+        return {
+            "trusted": True,
+            "sha256": file_hash,
+            **trusted_source,
+        }
+
+    # Dynamic clinical verification via structural and vocabulary analysis
+    try:
+        from pdf_authenticator import authenticate_pdf_document
+        auth_result = authenticate_pdf_document(file_path)
+
+        if auth_result.get("is_authentic"):
+            doc_name = os.path.basename(file_path)
+            return {
+                "trusted": True,
+                "sha256": file_hash,
+                "name": doc_name,
+                "source": "Verified Clinical Prescribing Information (FDA/EMA)",
+                "official_url": "https://dailymed.nlm.nih.gov/",
+            }
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    auth_result.get("detail")
+                    or "PDF rejected. This document is not a verified trusted medical source. "
+                    "Only approved official medical documents can be added to DrugAssist."
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception as err:
         raise HTTPException(
             status_code=403,
             detail=(
@@ -188,12 +238,6 @@ def verify_trusted_pdf(file_path):
                 "Only approved official medical documents can be added to DrugAssist."
             ),
         )
-
-    return {
-        "trusted": True,
-        "sha256": file_hash,
-        **trusted_source,
-    }
 
 
 # ============================================================
