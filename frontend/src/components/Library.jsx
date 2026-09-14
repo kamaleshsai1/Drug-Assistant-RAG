@@ -1,52 +1,64 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Library as LibraryIcon,
+  ArrowLeft,
   FileText,
   Trash2,
-  RefreshCw,
-  Search,
-  X,
-  MessageSquare,
-  Check,
+  MessageCircle,
   ExternalLink,
+  Search,
+  Loader2,
+  RefreshCw
 } from "lucide-react";
-import ConfirmationModal from "./ConfirmationModal";
 
-function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId, onViewPdf }) {
+function Library({
+  apiUrl,
+  token,
+  onBack,
+  onSelectDocument,
+  onOpenDocument,
+  selectedDocumentId
+}) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [deleteDocId, setDeleteDocId] = useState(null);
-  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
 
   const loadDocuments = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await fetch(
-        `${apiUrl}/documents`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+      const response = await fetch(`${apiUrl}/documents`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`
         }
-      );
+      });
 
-      const data = await response.json();
-
-      if (!response.ok) {
+      if (response.status === 401) {
         throw new Error(
-          data.detail || "Failed to load documents."
+          "Your session has expired. Please log in again."
         );
       }
 
-      setDocuments(data.documents || []);
+      if (!response.ok) {
+        throw new Error(
+          "Unable to load your PDF library."
+        );
+      }
+
+      const data = await response.json();
+
+      const docs = Array.isArray(data)
+        ? data
+        : data.documents || data.items || [];
+
+      setDocuments(docs);
     } catch (err) {
-      console.error("Library error:", err);
+      console.error("LIBRARY LOAD ERROR:", err);
       setError(
-        err.message || "Unable to load your documents."
+        err.message || "Unable to load your PDF library."
       );
     } finally {
       setLoading(false);
@@ -54,140 +66,193 @@ function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId, 
   };
 
   useEffect(() => {
-    loadDocuments();
-  }, []);
+    if (token) {
+      loadDocuments();
+    }
+  }, [token]);
 
-  const handleDelete = (documentId) => {
-    setDeleteDocId(documentId);
-  };
+  const handleDelete = async (event, document) => {
+    event.stopPropagation();
 
-  const confirmDeleteDoc = async () => {
-    if (!deleteDocId) return;
+    if (!document?.id) return;
+
+    const filename =
+      document.filename ||
+      document.file_name ||
+      document.name ||
+      "this document";
+
+    const confirmed = window.confirm(
+      `Delete "${filename}"?`
+    );
+
+    if (!confirmed) return;
 
     try {
-      setDeleting(true);
+      setDeletingId(document.id);
+
       const response = await fetch(
-        `${apiUrl}/documents/${deleteDocId}`,
+        `${apiUrl}/documents/${document.id}`,
         {
           method: "DELETE",
           headers: {
-            Authorization: `Bearer ${token}`,
-          },
+            Authorization: `Bearer ${token}`
+          }
         }
       );
 
-      const data = await response.json();
+      if (response.status === 401) {
+        throw new Error(
+          "Your session has expired. Please log in again."
+        );
+      }
 
       if (!response.ok) {
-        throw new Error(
-          data.detail || "Failed to delete document."
-        );
+        let message =
+          "Unable to delete the document.";
+
+        try {
+          const data = await response.json();
+          message =
+            data.detail ||
+            data.message ||
+            message;
+        } catch {
+          // Ignore invalid JSON
+        }
+
+        throw new Error(message);
       }
 
       setDocuments((previous) =>
         previous.filter(
-          (document) =>
-            String(document.id) !==
-            String(deleteDocId)
+          (item) =>
+            Number(item.id) !==
+            Number(document.id)
         )
       );
     } catch (err) {
-      console.error("Delete document error:", err);
-      setError(err.message || "Failed to delete document.");
-    } finally {
-      setDeleting(false);
-      setDeleteDocId(null);
-    }
-  };
-
-  const filteredDocuments = documents.filter(
-    (document) => {
-      const term = searchTerm
-        .trim()
-        .toLowerCase();
-
-      if (!term) {
-        return true;
-      }
-
-      return (
-        (document.filename || "")
-          .toLowerCase()
-          .includes(term) ||
-        (document.drug_name || "")
-          .toLowerCase()
-          .includes(term) ||
-        (document.source || "")
-          .toLowerCase()
-          .includes(term)
+      console.error(
+        "LIBRARY DELETE ERROR:",
+        err
       );
+
+      alert(
+        err.message ||
+          "Unable to delete document."
+      );
+    } finally {
+      setDeletingId(null);
     }
-  );
-
-  const formatDate = (dateValue) => {
-    if (!dateValue) {
-      return "Unknown date";
-    }
-
-    const date = new Date(dateValue);
-
-    if (Number.isNaN(date.getTime())) {
-      return "Unknown date";
-    }
-
-    return date.toLocaleDateString(
-      undefined,
-      {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }
-    );
   };
+
+  const handleOpenPDF = (
+    event,
+    document
+  ) => {
+    event.stopPropagation();
+
+    if (!document?.id) {
+      console.error(
+        "Cannot open PDF: missing document ID."
+      );
+      return;
+    }
+
+    if (onOpenDocument) {
+      onOpenDocument(document, 1);
+    }
+  };
+
+  const handleAskQuestions = (
+    event,
+    document
+  ) => {
+    event.stopPropagation();
+
+    if (!document) return;
+
+    if (onSelectDocument) {
+      onSelectDocument(document);
+    }
+  };
+
+  const handleCardClick = (document) => {
+    if (!document) return;
+
+    if (onOpenDocument) {
+      onOpenDocument(document, 1);
+    }
+  };
+
+  const filteredDocuments =
+    documents.filter((document) => {
+      const filename =
+        document.filename ||
+        document.file_name ||
+        document.name ||
+        "";
+
+      const drug =
+        document.drug_name ||
+        document.drug ||
+        "";
+
+      const source =
+        document.source ||
+        "";
+
+      const searchText =
+        `${filename} ${drug} ${source}`
+          .toLowerCase();
+
+      return searchText.includes(
+        String(searchTerm).toLowerCase()
+      );
+    });
 
   return (
     <div className="library-page">
 
       {/* =====================================================
           HEADER
-      ====================================================== */}
+      ===================================================== */}
 
-      <header className="library-header">
+      <div className="library-header">
 
         <div className="library-header-left">
 
           <button
+            type="button"
             className="library-back-button"
             onClick={onBack}
-            title="Back to chat"
-            aria-label="Back to chat"
+            title="Back to Chat"
           >
-            <X size={19} />
+            <ArrowLeft size={18} />
           </button>
 
           <div className="library-header-icon">
-            <LibraryIcon size={22} />
+            <FileText size={20} />
           </div>
 
           <div>
-            <h1>Library</h1>
-
+            <h1>PDF Library</h1>
             <p>
-              Your uploaded drug information
+              Your trusted medical documents
             </p>
           </div>
 
         </div>
 
         <button
+          type="button"
           className="library-refresh-button"
           onClick={loadDocuments}
           disabled={loading}
-          title="Refresh"
-          aria-label="Refresh Library"
+          title="Refresh library"
         >
           <RefreshCw
-            size={18}
+            size={17}
             className={
               loading
                 ? "library-refresh-spinning"
@@ -196,11 +261,11 @@ function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId, 
           />
         </button>
 
-      </header>
+      </div>
 
       {/* =====================================================
           SEARCH
-      ====================================================== */}
+      ===================================================== */}
 
       <div className="library-search-wrapper">
 
@@ -208,7 +273,7 @@ function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId, 
 
         <input
           type="text"
-          placeholder="Search your documents..."
+          placeholder="Search your PDFs..."
           value={searchTerm}
           onChange={(event) =>
             setSearchTerm(event.target.value)
@@ -219,221 +284,313 @@ function Library({ apiUrl, token, onBack, onSelectDocument, selectedDocumentId, 
 
       {/* =====================================================
           CONTENT
-      ====================================================== */}
+      ===================================================== */}
 
-      <main className="library-content">
+      <div className="library-content">
 
-        {loading ? (
+        {/* Loading */}
+
+        {loading && (
           <div className="library-state">
-
-            <RefreshCw
+            <Loader2
               size={28}
               className="library-refresh-spinning"
             />
 
-            <p>
-              Loading your documents...
-            </p>
-
+            <span>
+              Loading your PDF library...
+            </span>
           </div>
-        ) : error ? (
-          <div className="library-state library-error">
+        )}
 
-            <FileText size={30} />
+        {/* Error */}
 
-            <p>{error}</p>
+        {!loading && error && (
+          <div className="library-state">
+
+            <span className="library-error">
+              {error}
+            </span>
 
             <button
-              onClick={loadDocuments}
+              type="button"
               className="library-retry-button"
+              onClick={loadDocuments}
             >
-              Try again
+              Try Again
             </button>
 
           </div>
-        ) : filteredDocuments.length === 0 ? (
-          <div className="library-empty">
+        )}
 
-            <div className="library-empty-icon">
-              <LibraryIcon size={35} />
+        {/* Empty */}
+
+        {!loading &&
+          !error &&
+          filteredDocuments.length === 0 && (
+            <div className="library-empty">
+
+              <div className="library-empty-icon">
+                <FileText size={34} />
+              </div>
+
+              <h2>
+                {searchTerm
+                  ? "No matching PDFs"
+                  : "No PDFs in your library"}
+              </h2>
+
+              <p>
+                {searchTerm
+                  ? "Try a different search term."
+                  : "Upload a trusted medical PDF to start using the library."}
+              </p>
+
+              {!searchTerm && (
+                <button
+                  type="button"
+                  className="library-back-to-chat"
+                  onClick={onBack}
+                >
+                  Back to Chat
+                </button>
+              )}
+
             </div>
+          )}
 
-            <h2>
-              {searchTerm
-                ? "No documents found"
-                : "Your Library is empty"}
-            </h2>
+        {/* Results */}
 
-            <p>
-              {searchTerm
-                ? "Try a different search term."
-                : "Upload a PDF through the + button in the chat composer to add drug information here."}
-            </p>
-
-            {!searchTerm && (
-              <button
-                className="library-back-to-chat"
-                onClick={onBack}
-              >
-                Go to chat
-              </button>
-            )}
-
-          </div>
-        ) : (
-          <>
-            <div className="library-results-header">
-              <span>
+        {!loading &&
+          !error &&
+          filteredDocuments.length > 0 && (
+            <>
+              <div className="library-results-header">
                 {filteredDocuments.length}{" "}
                 {filteredDocuments.length === 1
                   ? "document"
                   : "documents"}
-              </span>
-            </div>
+              </div>
 
-            <div className="document-grid">
+              <div className="document-grid">
 
-              {filteredDocuments.map(
-                (document) => {
-                  const isActive =
-                    selectedDocumentId !== null &&
-                    selectedDocumentId !== undefined &&
-                    String(document.id) === String(selectedDocumentId);
+                {filteredDocuments.map(
+                  (document) => {
 
-                  return (
-                    <article
-                      className={`document-card ${
-                        isActive ? "document-card-active" : ""
-                      }`}
-                      key={document.id}
-                      onClick={() => {
-                        if (typeof onSelectDocument === "function") {
-                          onSelectDocument(document);
+                    const documentId =
+                      document.id;
+
+                    const filename =
+                      document.filename ||
+                      document.file_name ||
+                      document.name ||
+                      "Medical Document";
+
+                    const drugName =
+                      document.drug_name ||
+                      document.drug ||
+                      document.drugName ||
+                      "";
+
+                    const source =
+                      document.source ||
+                      document.source_name ||
+                      document.sourceName ||
+                      "";
+
+                    const isSelected =
+                      Number(
+                        selectedDocumentId
+                      ) ===
+                      Number(documentId);
+
+                    const isDeleting =
+                      Number(deletingId) ===
+                      Number(documentId);
+
+                    return (
+                      <div
+                        key={documentId}
+                        className={`document-card ${
+                          isSelected
+                            ? "document-card-active"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          handleCardClick(
+                            document
+                          )
                         }
-                      }}
-                      title="Click to ask questions about this document in chat"
-                    >
-                      <div className="document-card-top">
-                        <div className="document-icon">
-                          <FileText size={24} />
+                      >
+
+                        {/* =================================================
+                            TOP
+                        ================================================= */}
+
+                        <div className="document-card-top">
+
+                          <div className="document-icon">
+                            <FileText size={23} />
+                          </div>
+
+                          <div className="document-card-actions">
+
+                            {isSelected && (
+                              <span className="document-active-badge">
+                                Selected
+                              </span>
+                            )}
+
+                            <button
+                              type="button"
+                              className="document-delete"
+                              title="Delete PDF"
+                              disabled={
+                                isDeleting
+                              }
+                              onClick={(event) =>
+                                handleDelete(
+                                  event,
+                                  document
+                                )
+                              }
+                            >
+                              {isDeleting ? (
+                                <Loader2
+                                  size={16}
+                                  className="library-refresh-spinning"
+                                />
+                              ) : (
+                                <Trash2
+                                  size={16}
+                                />
+                              )}
+                            </button>
+
+                          </div>
+
                         </div>
 
-                        <div className="document-card-actions">
-                          {isActive && (
-                            <span className="document-active-badge">
-                              <Check size={12} strokeWidth={2.5} />
-                              Active
+                        {/* =================================================
+                            DOCUMENT INFO
+                        ================================================= */}
+
+                        <h3
+                          className="document-name"
+                          title={filename}
+                        >
+                          {filename}
+                        </h3>
+
+                        {drugName && (
+                          <div className="document-drug">
+                            {drugName}
+                          </div>
+                        )}
+
+                        {source && (
+                          <div
+                            className="document-source"
+                            title={source}
+                          >
+                            {source}
+                          </div>
+                        )}
+
+                        {/* =================================================
+                            META
+                        ================================================= */}
+
+                        <div className="document-meta">
+
+                          {document.pages && (
+                            <span>
+                              {document.pages} pages
                             </span>
                           )}
 
-                          <button
-                            type="button"
-                            className="document-delete"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (typeof onViewPdf === "function") {
-                                onViewPdf({
-                                  documentId: document.document_id || document.id,
-                                  page: 1,
-                                  title: document.filename || document.drug_name || "Prescribing Information",
-                                  drug: document.drug_name || "",
-                                });
-                              }
-                            }}
-                            title="View PDF"
-                            aria-label="View PDF"
-                          >
-                            <ExternalLink size={15} />
-                          </button>
+                          {document.file_type && (
+                            <span>
+                              {String(
+                                document.file_type
+                              ).toUpperCase()}
+                            </span>
+                          )}
 
-                          <button
-                            type="button"
-                            className="document-delete"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleDelete(document.id);
-                            }}
-                            title="Delete document"
-                            aria-label="Delete document"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {!document.pages &&
+                            !document.file_type && (
+                              <span>
+                                Medical PDF
+                              </span>
+                            )}
+
                         </div>
-                      </div>
 
-                      <div className="document-name" title={document.filename}>
-                        {document.filename || "Untitled document"}
-                      </div>
-
-                      {document.drug_name && (
-                        <div className="document-drug">
-                          {document.drug_name}
-                        </div>
-                      )}
-
-                      {document.source && (
-                        <div className="document-source" title={document.source}>
-                          {document.source}
-                        </div>
-                      )}
-
-                      <div className="document-meta">
-                        {document.pages !== undefined && (
-                          <span>
-                            {document.pages}{" "}
-                            {document.pages === 1 ? "page" : "pages"}
-                          </span>
+                        {document.created_at && (
+                          <div className="document-date">
+                            Added{" "}
+                            {new Date(
+                              document.created_at
+                            ).toLocaleDateString()}
+                          </div>
                         )}
 
-                        {document.chunks !== undefined && (
-                          <span>{document.chunks} chunks</span>
-                        )}
-                      </div>
+                        {/* =================================================
+                            OPEN PDF BUTTON
+                        ================================================= */}
 
-                      <div className="document-date">
-                        Added {formatDate(document.created_at)}
-                      </div>
-
-                      <button
-                        type="button"
-                        className={`document-chat-btn ${
-                          isActive ? "active" : ""
-                        }`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (typeof onSelectDocument === "function") {
-                            onSelectDocument(document);
+                        <button
+                          type="button"
+                          className="document-chat-btn"
+                          onClick={(event) =>
+                            handleOpenPDF(
+                              event,
+                              document
+                            )
                           }
-                        }}
-                      >
-                        <MessageSquare size={14} />
-                        <span>
-                          {isActive
-                            ? "Active in Chat"
-                            : "Chat with this document"}
-                        </span>
-                      </button>
-                    </article>
-                  );
-                }
-              )}
+                        >
+                          <ExternalLink
+                            size={15}
+                          />
 
-            </div>
-          </>
-        )}
+                          <span>
+                            Open PDF
+                          </span>
+                        </button>
 
-      </main>
+                        {/* =================================================
+                            ASK QUESTIONS BUTTON
+                        ================================================= */}
 
-      <ConfirmationModal
-        isOpen={deleteDocId !== null}
-        title="Remove Document"
-        message="Are you sure you want to remove this drug prescribing PDF from your library? Its indexed embeddings will be permanently removed."
-        confirmLabel={deleting ? "Removing..." : "Remove Document"}
-        cancelLabel="Keep Document"
-        isDanger={true}
-        onConfirm={confirmDeleteDoc}
-        onCancel={() => setDeleteDocId(null)}
-      />
+                        <button
+                          type="button"
+                          className="document-chat-btn"
+                          onClick={(event) =>
+                            handleAskQuestions(
+                              event,
+                              document
+                            )
+                          }
+                        >
+                          <MessageCircle
+                            size={15}
+                          />
+
+                          <span>
+                            Ask Questions
+                          </span>
+                        </button>
+
+                      </div>
+                    );
+                  }
+                )}
+
+              </div>
+            </>
+          )}
+
+      </div>
 
     </div>
   );

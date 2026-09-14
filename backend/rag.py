@@ -1587,19 +1587,22 @@ def build_context(
             score = 0.0
 
         sources.append(
-            {
-                "source_id": source_number,
-                "page": page_number,
-                "section": (
-                    section or "Not specified"
-                ),
-                "source": source,
-                "drug": drug,
-                "document_id": document_id,
-                "score": score,
-                "snippet": text[:500]
-            }
-        )
+    {
+        "source_id": source_number,
+        "page": page_number,
+        "section": (
+            section or "Not specified"
+        ),
+        "source": source,
+        "drug": drug,
+        "document_id": document_id,
+        "database_document_id": metadata.get(
+            "database_document_id"
+        ),
+        "score": score,
+        "snippet": text[:500]
+    }
+)
 
         source_number += 1
 

@@ -19,7 +19,6 @@ backend/uploads/
 
 # Databases
 *.db
-!backend/database/drugassist.db
 
 # IDE
 .vscode/

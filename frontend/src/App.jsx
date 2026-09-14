@@ -1,8 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState
-} from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Sun,
@@ -22,11 +18,9 @@ import Library from "./components/Library";
 import PrivacyPolicy from "./components/PrivacyPolicy";
 import TermsAndConditions from "./components/TermsAndConditions";
 import FAQAccordion from "./components/FAQAccordion";
-import PdfViewerModal from "./components/PdfViewerModal";
 
 import {
   askAURA,
-  getChatHistory,
   getDocuments,
   uploadPDF,
   getConversations,
@@ -35,7 +29,8 @@ import {
   deleteAllConversations,
   deletePDF,
   askImage,
-  voiceAsk
+  voiceAsk,
+  getDocumentPDF
 } from "./services/api";
 
 
@@ -50,81 +45,49 @@ function App() {
   // AUTHENTICATION
   // ============================================================
 
-  const [isAuthenticated, setIsAuthenticated] =
-    useState(
-      Boolean(
-        localStorage.getItem("aura_token")
-      )
-    );
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    Boolean(localStorage.getItem("aura_token"))
+  );
 
-  const [showPrivacy, setShowPrivacy] = useState(false);
-  const [showTerms, setShowTerms] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [activePdfModal, setActivePdfModal] = useState(null);
-
-  const handleOpenCitation = (citationInfo) => {
-    setActivePdfModal(citationInfo);
-  };
-
-  // ============================================================
-  // THEME MANAGEMENT (Light / Dark)
-  // ============================================================
-
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("drugassist_theme") || "light";
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("drugassist_theme", theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((previous) => (previous === "light" ? "dark" : "light"));
-  };
-
-  // Keep the logged-in user available to the Sidebar.
-  // AuthPage stores this object in localStorage as "aura_user".
   const [user, setUser] = useState(() => {
     try {
-      const storedUser =
-        localStorage.getItem("aura_user");
-
-      return storedUser
-        ? JSON.parse(storedUser)
-        : null;
-    } catch (error) {
-      console.error("USER PARSE ERROR:", error);
+      const storedUser = localStorage.getItem("aura_user");
+      return storedUser ? JSON.parse(storedUser) : null;
+    } catch {
       return null;
     }
   });
 
-  // Current application view.
-  const [currentView, setCurrentView] =
-    useState("chat");
+
+  // ============================================================
+  // GENERAL UI
+  // ============================================================
+
+  const [currentView, setCurrentView] = useState("chat");
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("drugassist_theme") || "light";
+  });
 
 
   // ============================================================
   // CHAT
   // ============================================================
 
-  const [messages, setMessages] =
-    useState([]);
-
-  const [input, setInput] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(false);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
 
 
   // ============================================================
   // CONVERSATIONS
   // ============================================================
 
-  const [conversations, setConversations] =
-    useState([]);
-
+  const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] =
     useState(null);
 
@@ -133,14 +96,11 @@ function App() {
 
 
   // ============================================================
-  // UPLOADED FILES
+  // DOCUMENTS
   // ============================================================
 
-  const [uploadedFiles, setUploadedFiles] =
-    useState([]);
-
-  const [uploadedDocuments, setUploadedDocuments] =
-    useState([]);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploadedDocuments, setUploadedDocuments] = useState([]);
 
   const [selectedDocumentId, setSelectedDocumentId] =
     useState(null);
@@ -150,12 +110,24 @@ function App() {
 
 
   // ============================================================
-  // PENDING IMAGE ATTACHMENT
+  // PDF VIEWER
   // ============================================================
 
-  const [pendingImage, setPendingImage] =
-    useState(null);
+  const [pdfViewer, setPdfViewer] = useState({
+    open: false,
+    url: "",
+    page: 1,
+    filename: ""
+  });
 
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+
+  // ============================================================
+  // IMAGE
+  // ============================================================
+
+  const [pendingImage, setPendingImage] = useState(null);
   const [pendingImagePreview, setPendingImagePreview] =
     useState("");
 
@@ -164,200 +136,157 @@ function App() {
   // VOICE
   // ============================================================
 
-  const [isRecording, setIsRecording] =
-    useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("");
 
-  const [voiceStatus, setVoiceStatus] =
-    useState("");
-
-  const mediaRecorderRef =
-    useRef(null);
-
-  const audioChunksRef =
-    useRef([]);
-
-  const streamRef =
-    useRef(null);
-
-  const speechRecognitionRef =
-    useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const speechRecognitionRef = useRef(null);
 
 
   // ============================================================
-  // CHAT SCROLL
+  // SCROLL
   // ============================================================
 
-  const chatEndRef =
-    useRef(null);
+  const chatAreaRef = useRef(null);
 
-  const chatAreaRef =
-    useRef(null);
-
-  // Scroll & UTM tracking
   const [scrollProgress, setScrollProgress] = useState(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // UTM Tracking (Item 14)
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const utmSource = params.get("utm_source");
-      const utmMedium = params.get("utm_medium");
-      const utmCampaign = params.get("utm_campaign");
-      if (utmSource || utmMedium || utmCampaign) {
-        sessionStorage.setItem(
-          "drugassist_utm",
-          JSON.stringify({
-            source: utmSource || "",
-            medium: utmMedium || "",
-            campaign: utmCampaign || "",
-            timestamp: new Date().toISOString()
-          })
-        );
-      }
-    } catch (e) {}
-  }, []);
 
-  // Scroll tracking on chatAreaRef (Items 4 & 8)
+  // ============================================================
+  // THEME
+  // ============================================================
+
   useEffect(() => {
-    const el = chatAreaRef.current;
-    if (!el) return;
+    document.documentElement.setAttribute(
+      "data-theme",
+      theme
+    );
+
+    localStorage.setItem(
+      "drugassist_theme",
+      theme
+    );
+  }, [theme]);
+
+
+  const toggleTheme = () => {
+    setTheme((previous) =>
+      previous === "light"
+        ? "dark"
+        : "light"
+    );
+  };
+
+
+  // ============================================================
+  // SCROLL TRACKING
+  // ============================================================
+
+  useEffect(() => {
+
+    const element = chatAreaRef.current;
+
+    if (!element) return;
 
     const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      const total = scrollHeight - clientHeight;
-      const progress = total > 0 ? Math.min(100, Math.max(0, (scrollTop / total) * 100)) : 0;
+
+      const {
+        scrollTop,
+        scrollHeight,
+        clientHeight
+      } = element;
+
+      const total =
+        scrollHeight - clientHeight;
+
+      const progress =
+        total > 0
+          ? Math.min(
+              100,
+              Math.max(
+                0,
+                (scrollTop / total) * 100
+              )
+            )
+          : 0;
+
       setScrollProgress(progress);
-      setShowScrollTop(scrollTop > 260);
+
+      setShowScrollTop(
+        scrollTop > 260
+      );
     };
 
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => el.removeEventListener("scroll", handleScroll);
+
+    element.addEventListener(
+      "scroll",
+      handleScroll,
+      { passive: true }
+    );
+
+
+    return () => {
+      element.removeEventListener(
+        "scroll",
+        handleScroll
+      );
+    };
+
   }, [currentView, messages.length]);
 
-  const handleScrollToTop = () => {
-    if (chatAreaRef.current) {
-      chatAreaRef.current.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  };
 
-  const handleDismissBanner = () => {
-    setShowBanner(false);
-    sessionStorage.setItem("drugassist_dismiss_banner", "true");
+  const handleScrollToTop = () => {
+
+    if (!chatAreaRef.current) return;
+
+    chatAreaRef.current.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
   };
 
 
   // ============================================================
-  // AUTO-SCROLL CHAT
+  // AUTO SCROLL
   // ============================================================
 
   useEffect(() => {
-    /*
-      The .chat-area element is the ONLY scrolling container.
-      ChatWindow itself is forced to be content-sized below, so the
-      browser does not have two competing scrollbars.
-    */
-    let frame1;
-    let frame2;
 
-    frame1 = requestAnimationFrame(() => {
-      frame2 = requestAnimationFrame(() => {
-        const chatArea = chatAreaRef.current;
+    if (!chatAreaRef.current) return;
 
-        if (chatArea) {
-          chatArea.scrollTo({
-            top: chatArea.scrollHeight,
-            behavior: "smooth"
-          });
-        }
+    const timer = setTimeout(() => {
+
+      chatAreaRef.current.scrollTo({
+        top: chatAreaRef.current.scrollHeight,
+        behavior: "smooth"
       });
-    });
 
-    return () => {
-      cancelAnimationFrame(frame1);
-      if (frame2) {
-        cancelAnimationFrame(frame2);
-      }
-    };
+    }, 50);
+
+    return () => clearTimeout(timer);
+
   }, [
     messages,
     loading,
-    voiceStatus,
-    currentConversationId
+    voiceStatus
   ]);
 
 
   // ============================================================
-  // LOAD DATA AFTER LOGIN
+  // LOAD DATA
   // ============================================================
 
   useEffect(() => {
 
-    if (!isAuthenticated) {
-      return;
-    }
+    if (!isAuthenticated) return;
 
     loadConversations();
     loadDocuments();
 
   }, [isAuthenticated]);
-
-
-  // ============================================================
-  // CLEANUP MICROPHONE
-  // ============================================================
-
-  useEffect(() => {
-
-    return () => {
-
-      if (mediaRecorderRef.current) {
-
-        try {
-
-          if (
-            mediaRecorderRef.current.state !==
-            "inactive"
-          ) {
-            mediaRecorderRef.current.stop();
-          }
-
-        } catch (error) {
-          console.error(
-            "Recorder cleanup error:",
-            error
-          );
-        }
-
-      }
-
-
-      if (streamRef.current) {
-
-        streamRef.current
-          .getTracks()
-          .forEach(
-            (track) => track.stop()
-          );
-
-      }
-
-    };
-
-  }, []);
-
-
-  // ============================================================
-  // CLEANUP IMAGE PREVIEW
-  // ============================================================
-
-  useEffect(() => {
-    return () => {
-      if (pendingImagePreview) {
-        URL.revokeObjectURL(pendingImagePreview);
-      }
-    };
-  }, [pendingImagePreview]);
 
 
   // ============================================================
@@ -371,13 +300,14 @@ function App() {
       const data =
         await getConversations();
 
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.conversations)
-        ? data.conversations
-        : Array.isArray(data?.chats)
-        ? data.chats
-        : [];
+      const list =
+        Array.isArray(data)
+          ? data
+          : Array.isArray(data?.conversations)
+          ? data.conversations
+          : Array.isArray(data?.chats)
+          ? data.chats
+          : [];
 
       setConversations(list);
 
@@ -395,9 +325,74 @@ function App() {
       ) {
         handleLogout();
       }
-
     }
+  };
 
+
+  // ============================================================
+  // LOAD DOCUMENTS
+  // ============================================================
+
+  const loadDocuments = async () => {
+
+    try {
+
+      const data =
+        await getDocuments();
+
+      const documents =
+        Array.isArray(data?.documents)
+          ? data.documents
+          : [];
+
+      setUploadedDocuments(
+        documents
+      );
+
+      setUploadedFiles(
+        documents.map(
+          (document) =>
+            document.filename
+        )
+      );
+
+      if (selectedDocumentId !== null) {
+
+        const selected =
+          documents.find(
+            (document) =>
+              Number(document.id) ===
+              Number(selectedDocumentId)
+          );
+
+        if (selected) {
+
+          setSelectedDocumentName(
+            selected.filename || ""
+          );
+
+        } else {
+
+          setSelectedDocumentId(null);
+          setSelectedDocumentName("");
+        }
+      }
+
+    } catch (error) {
+
+      console.error(
+        "DOCUMENT ERROR:",
+        error
+      );
+
+      if (
+        error.message?.includes(
+          "session has expired"
+        )
+      ) {
+        handleLogout();
+      }
+    }
   };
 
 
@@ -419,6 +414,7 @@ function App() {
     try {
 
       setLoadingConversation(true);
+
       setCurrentConversationId(
         conversationId
       );
@@ -429,26 +425,51 @@ function App() {
         );
 
       const conversationMessages =
-        data.messages || [];
+        Array.isArray(data?.messages)
+          ? data.messages
+          : [];
 
-      // Backend returns one database message per record:
-      // { id, role, content, sources, videos, ... }.
-      // Do not convert each record into question/answer pairs;
-      // doing that was the reason old chats appeared empty.
-      const loadedMessages = conversationMessages
-        .filter((item) => item && item.role && item.content !== undefined)
-        .map((item) => ({
-          id: item.id || `message-${Date.now()}-${Math.random()}`,
-          role: item.role,
-          content: item.content,
-          sources: item.sources || [],
-          attachments: item.attachments || [],
-          evidence: item.evidence || [],
-          confidence: item.confidence,
-          grounding_score: item.grounding_score,
-          mode: item.mode,
-          image_analysis: item.image_analysis
-        }));
+      const loadedMessages =
+        conversationMessages
+          .filter(
+            (item) =>
+              item &&
+              item.role &&
+              item.content !== undefined
+          )
+          .map((item) => ({
+            id:
+              item.id ||
+              `message-${Date.now()}-${Math.random()}`,
+
+            role: item.role,
+
+            content: item.content,
+
+            sources:
+              item.sources || [],
+
+            videos:
+              item.videos || [],
+
+            attachments:
+              item.attachments || [],
+
+            evidence:
+              item.evidence || [],
+
+            confidence:
+              item.confidence,
+
+            grounding_score:
+              item.grounding_score,
+
+            mode:
+              item.mode,
+
+            image_analysis:
+              item.image_analysis
+          }));
 
       setMessages(
         loadedMessages
@@ -458,6 +479,8 @@ function App() {
 
       setPendingImage(null);
       setPendingImagePreview("");
+
+      setCurrentView("chat");
 
     } catch (error) {
 
@@ -479,8 +502,9 @@ function App() {
         {
           id:
             `conversation-error-${Date.now()}`,
-          role:
-            "assistant",
+
+          role: "assistant",
+
           content:
             error.message ||
             "Unable to open this conversation."
@@ -490,156 +514,321 @@ function App() {
     } finally {
 
       setLoadingConversation(false);
-
-    }
-
-  };
-
-
-  // ============================================================
-  // LOAD DOCUMENTS
-  // ============================================================
-
-  const loadDocuments = async () => {
-
-    try {
-
-      const data =
-        await getDocuments();
-
-      const documents =
-        data.documents || [];
-
-      setUploadedDocuments(
-        documents
-      );
-
-      setUploadedFiles(
-        documents.map(
-          (document) =>
-            document.filename
-        )
-      );
-
-      if (selectedDocumentId !== null) {
-        const selected = documents.find(
-          (document) =>
-            Number(document.id) ===
-            Number(selectedDocumentId)
-        );
-
-        if (selected) {
-          setSelectedDocumentName(
-            selected.filename
-          );
-        } else {
-          setSelectedDocumentId(null);
-          setSelectedDocumentName("");
-        }
-      }
-
-    } catch (error) {
-
-      console.error(
-        "DOCUMENT ERROR:",
-        error
-      );
-
-
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
-
-        handleLogout();
-
-      }
-
-    }
-
-  };
-
-
-  // ============================================================
-  // DELETE PDF
-  // ============================================================
-
-  const handleDeleteDocument = async (documentId) => {
-
-    try {
-      await deletePDF(documentId);
-
-      if (Number(selectedDocumentId) === Number(documentId)) {
-        setSelectedDocumentId(null);
-        setSelectedDocumentName("");
-      }
-
-      await loadDocuments();
-
-    } catch (error) {
-
-      console.error("DELETE PDF ERROR:", error);
-
-      if (error.message?.includes("session has expired")) {
-        handleLogout();
-      }
-
     }
   };
 
 
   // ============================================================
-  // SELECT PDF
+  // SELECT DOCUMENT FOR RAG
   // ============================================================
 
   const handleSelectDocument = (
     documentOrId
   ) => {
-    if (typeof documentOrId === "object" && documentOrId !== null) {
-      setSelectedDocumentId(documentOrId.id);
-      setSelectedDocumentName(
-        documentOrId.filename || "Selected document"
+
+    let selected = null;
+
+
+    if (
+      typeof documentOrId === "object" &&
+      documentOrId !== null
+    ) {
+
+      selected = documentOrId;
+
+    } else {
+
+      selected =
+        uploadedDocuments.find(
+          (document) =>
+            Number(document.id) ===
+            Number(documentOrId)
+        );
+    }
+
+
+    if (!selected) {
+
+      console.warn(
+        "Selected document not found:",
+        documentOrId
       );
 
-      setUploadedDocuments((previous) => {
-        if (
-          previous.some(
-            (doc) => Number(doc.id) === Number(documentOrId.id)
-          )
-        ) {
-          return previous;
-        }
-        return [...previous, documentOrId];
-      });
-
-      setCurrentView("chat");
-      setInput("");
       return;
     }
 
-    const documentId = documentOrId;
-    const selected = uploadedDocuments.find(
-      (document) =>
-        Number(document.id) ===
-        Number(documentId)
+
+    setSelectedDocumentId(
+      selected.id
     );
 
-    if (selected) {
-      setSelectedDocumentId(
-        selected.id
-      );
+    setSelectedDocumentName(
+      selected.filename ||
+      "Selected document"
+    );
 
-      setSelectedDocumentName(
-        selected.filename
-      );
-    } else {
-      setSelectedDocumentId(documentId);
-    }
+
+    setUploadedDocuments(
+      (previous) => {
+
+        const alreadyExists =
+          previous.some(
+            (document) =>
+              Number(document.id) ===
+              Number(selected.id)
+          );
+
+        if (alreadyExists) {
+          return previous;
+        }
+
+        return [
+          ...previous,
+          selected
+        ];
+      }
+    );
+
 
     setCurrentView("chat");
     setInput("");
   };
+
+
+  // ============================================================
+// OPEN PDF FROM CITATION
+// ============================================================
+
+const handleOpenSource = async (
+  documentId,
+  page = 1,
+  filename = "Drug Information"
+) => {
+  console.log("====================================");
+  console.log("PDF CITATION CLICKED");
+  console.log("Document ID:", documentId);
+  console.log("Requested Page:", page);
+  console.log("Filename:", filename);
+  console.log("====================================");
+
+  if (!documentId) {
+    console.error(
+      "PDF OPEN ERROR: Missing database document ID."
+    );
+
+    alert(
+      "This citation does not have a valid PDF document ID."
+    );
+
+    return;
+  }
+
+  const token =
+    localStorage.getItem("aura_token");
+
+  if (!token) {
+    console.error(
+      "PDF OPEN ERROR: Authentication token missing."
+    );
+
+    handleLogout();
+    return;
+  }
+
+  setPdfLoading(true);
+
+  try {
+    const pdfUrl =
+      `${API_BASE_URL}/documents/${documentId}/pdf`;
+
+    console.log(
+      "Fetching PDF:",
+      pdfUrl
+    );
+
+    const response = await fetch(
+      pdfUrl,
+      {
+        method: "GET",
+        headers: {
+          Authorization:
+            `Bearer ${token}`
+        }
+      }
+    );
+
+    console.log(
+      "PDF response status:",
+      response.status
+    );
+
+    console.log(
+      "PDF content type:",
+      response.headers.get(
+        "content-type"
+      )
+    );
+
+    if (!response.ok) {
+      let errorMessage =
+        `Unable to open PDF (${response.status})`;
+
+      try {
+        const errorData =
+          await response.json();
+
+        errorMessage =
+          errorData.detail ||
+          errorData.message ||
+          errorMessage;
+      } catch {
+        // Response was not JSON.
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const blob =
+      await response.blob();
+
+    console.log(
+      "PDF blob type:",
+      blob.type
+    );
+
+    console.log(
+      "PDF blob size:",
+      blob.size
+    );
+
+    if (
+      blob.type !==
+      "application/pdf"
+    ) {
+      throw new Error(
+        "The server did not return a PDF file."
+      );
+    }
+
+    if (blob.size === 0) {
+      throw new Error(
+        "The PDF file is empty."
+      );
+    }
+
+    const objectUrl =
+      URL.createObjectURL(blob);
+
+    const requestedPage =
+      Math.max(
+        1,
+        Math.floor(
+          Number(page) || 1
+        )
+      );
+
+    console.log(
+      "PDF object URL created:",
+      objectUrl
+    );
+
+    console.log(
+      "Opening PDF on page:",
+      requestedPage
+    );
+
+    setPdfViewer({
+      open: true,
+      url: objectUrl,
+      page: requestedPage,
+      filename:
+        filename ||
+        "Drug Information"
+    });
+
+  } catch (error) {
+    console.error(
+      "PDF OPEN ERROR:",
+      error
+    );
+
+    alert(
+      error.message ||
+      "Unable to open the requested PDF."
+    );
+
+  } finally {
+    setPdfLoading(false);
+  }
+};
+
+  // ============================================================
+  // OPEN PDF FROM LIBRARY
+  // ============================================================
+
+  const handleOpenDocument = (
+    document,
+    page = 1
+  ) => {
+
+    if (!document) return;
+
+
+    handleOpenSource(
+      document.id,
+      page,
+      document.filename ||
+      document.source ||
+      "Drug Information"
+    );
+  };
+
+
+  // ============================================================
+  // CLOSE PDF VIEWER
+  // ============================================================
+
+  const handleClosePdfViewer = () => {
+
+    setPdfViewer(
+      (previous) => {
+
+        if (previous.url) {
+
+          URL.revokeObjectURL(
+            previous.url
+          );
+        }
+
+
+        return {
+          open: false,
+          url: "",
+          page: 1,
+          filename: ""
+        };
+      }
+    );
+  };
+
+
+  // ============================================================
+  // PDF CLEANUP
+  // ============================================================
+
+  useEffect(() => {
+
+    return () => {
+
+      if (pdfViewer.url) {
+
+        URL.revokeObjectURL(
+          pdfViewer.url
+        );
+      }
+    };
+
+  }, [pdfViewer.url]);
 
 
   // ============================================================
@@ -661,29 +850,35 @@ function App() {
       );
 
       return;
-
     }
 
 
     try {
+
       const storedUser =
-        localStorage.getItem("aura_user");
+        localStorage.getItem(
+          "aura_user"
+        );
 
       setUser(
         storedUser
           ? JSON.parse(storedUser)
           : null
       );
-    } catch (error) {
-      console.error("USER PARSE ERROR:", error);
+
+    } catch {
+
       setUser(null);
     }
 
-    setIsAuthenticated(true);
-    setCurrentView("chat");
-    setMessages([]);
-    setInput("");
 
+    setIsAuthenticated(true);
+
+    setCurrentView("chat");
+
+    setMessages([]);
+
+    setInput("");
   };
 
 
@@ -703,19 +898,42 @@ function App() {
 
 
     setIsAuthenticated(false);
+
     setUser(null);
+
     setCurrentView("chat");
+
     setMessages([]);
+
     setInput("");
+
     setUploadedFiles([]);
+
     setUploadedDocuments([]);
+
     setSelectedDocumentId(null);
+
     setSelectedDocumentName("");
+
     setPendingImage(null);
+
     setPendingImagePreview("");
 
+    setIsRecording(false);
 
-    // Stop microphone if active
+    setVoiceStatus("");
+
+
+    if (speechRecognitionRef.current) {
+
+      try {
+        speechRecognitionRef.current.stop();
+      } catch {}
+
+      speechRecognitionRef.current =
+        null;
+    }
+
 
     if (mediaRecorderRef.current) {
 
@@ -728,13 +946,7 @@ function App() {
           mediaRecorderRef.current.stop();
         }
 
-      } catch (error) {
-        console.error(
-          "Recorder logout error:",
-          error
-        );
-      }
-
+      } catch {}
     }
 
 
@@ -743,17 +955,12 @@ function App() {
       streamRef.current
         .getTracks()
         .forEach(
-          (track) => track.stop()
+          (track) =>
+            track.stop()
         );
 
       streamRef.current = null;
-
     }
-
-
-    setIsRecording(false);
-    setVoiceStatus("");
-
   };
 
 
@@ -764,14 +971,20 @@ function App() {
   const handleNewChat = () => {
 
     setCurrentConversationId(null);
-    setMessages([]);
-    setInput("");
-    setSelectedDocumentId(null);
-    setSelectedDocumentName("");
-    setPendingImage(null);
-    setPendingImagePreview("");
-    setCurrentView("chat");
 
+    setMessages([]);
+
+    setInput("");
+
+    setSelectedDocumentId(null);
+
+    setSelectedDocumentName("");
+
+    setPendingImage(null);
+
+    setPendingImagePreview("");
+
+    setCurrentView("chat");
   };
 
 
@@ -783,8 +996,56 @@ function App() {
     setCurrentView("library");
   };
 
+
   const handleOpenChat = () => {
     setCurrentView("chat");
+  };
+
+
+  // ============================================================
+  // DELETE DOCUMENT
+  // ============================================================
+
+  const handleDeleteDocument = async (
+    documentId
+  ) => {
+
+    try {
+
+      await deletePDF(
+        documentId
+      );
+
+
+      if (
+        Number(selectedDocumentId) ===
+        Number(documentId)
+      ) {
+
+        setSelectedDocumentId(null);
+
+        setSelectedDocumentName("");
+      }
+
+
+      await loadDocuments();
+
+    } catch (error) {
+
+      console.error(
+        "DELETE PDF ERROR:",
+        error
+      );
+
+
+      if (
+        error.message?.includes(
+          "session has expired"
+        )
+      ) {
+        handleLogout();
+      }
+    }
   };
 
 
@@ -795,15 +1056,18 @@ function App() {
   const handleDeleteChat = async () => {
 
     if (!currentConversationId) {
+
       handleNewChat();
       return;
     }
+
 
     try {
 
       await deleteConversation(
         currentConversationId
       );
+
 
       setConversations(
         (previous) =>
@@ -814,14 +1078,16 @@ function App() {
           )
       );
 
+
       handleNewChat();
 
     } catch (error) {
 
       console.error(
-        "DELETE CONVERSATION ERROR:",
+        "DELETE CHAT ERROR:",
         error
       );
+
 
       if (
         error.message?.includes(
@@ -830,43 +1096,42 @@ function App() {
       ) {
         handleLogout();
       }
-
     }
-
   };
 
 
   // ============================================================
-  // DELETE ALL CONVERSATIONS
+  // DELETE ALL CHATS
   // ============================================================
 
-  const handleDeleteAllConversations = async () => {
+  const handleDeleteAllConversations =
+    async () => {
 
-    try {
+      try {
 
-      await deleteAllConversations();
+        await deleteAllConversations();
 
-      setConversations([]);
-      handleNewChat();
+        setConversations([]);
 
-    } catch (error) {
+        handleNewChat();
 
-      console.error(
-        "DELETE ALL CONVERSATIONS ERROR:",
-        error
-      );
+      } catch (error) {
 
-      if (
-        error.message?.includes(
-          "session has expired"
-        )
-      ) {
-        handleLogout();
+        console.error(
+          "DELETE ALL CHATS ERROR:",
+          error
+        );
+
+
+        if (
+          error.message?.includes(
+            "session has expired"
+          )
+        ) {
+          handleLogout();
+        }
       }
-
-    }
-
-  };
+    };
 
 
   // ============================================================
@@ -875,125 +1140,215 @@ function App() {
 
   const handleSend = async () => {
 
-    const text = input.trim();
+    const text =
+      input.trim();
 
-    if (!text || loading) {
+
+    if (
+      !text ||
+      loading
+    ) {
       return;
     }
 
+
     const token =
-      localStorage.getItem("aura_token");
+      localStorage.getItem(
+        "aura_token"
+      );
+
 
     if (!token) {
+
       handleLogout();
       return;
     }
 
-    const imageToSend = pendingImage;
+
+    const imageToSend =
+      pendingImage;
+
+
     const userMessage = {
-      id: `user-${Date.now()}`,
+      id:
+        `user-${Date.now()}`,
+
       role: "user",
+
       content: text
     };
 
-    setMessages((previous) => [
-      ...previous,
-      userMessage
-    ]);
+
+    setMessages(
+      (previous) => [
+        ...previous,
+        userMessage
+      ]
+    );
+
 
     setInput("");
+
     setPendingImage(null);
+
     setPendingImagePreview("");
+
     setLoading(true);
+
 
     try {
 
+      let data;
+
+
+      // --------------------------------------------------------
+      // IMAGE QUESTION
+      // --------------------------------------------------------
+
       if (imageToSend) {
 
-        const data =
+        data =
           await askImage(
             text,
             imageToSend.file,
             currentConversationId
           );
 
-        if (data.chat_id || data.conversation_id) {
-          setCurrentConversationId(
-            data.chat_id || data.conversation_id
-          );
-        }
+      }
 
-        await loadConversations();
+      // --------------------------------------------------------
+      // NORMAL RAG QUESTION
+      // --------------------------------------------------------
 
-        setMessages((previous) => [
-          ...previous,
-          {
-            id:
-              `assistant-${Date.now()}`,
-            role:
-              "assistant",
-            content:
-              data.answer ||
-              "DrugAssist could not generate an image analysis."
-          }
-        ]);
+      else {
 
-      } else {
-
-        const data =
+        data =
           await askAURA(
             text,
             currentConversationId,
             selectedDocumentId
           );
-
-        if (data.chat_id || data.conversation_id) {
-          setCurrentConversationId(
-            data.chat_id || data.conversation_id
-          );
-        }
-
-        await loadConversations();
-
-        setMessages((previous) => [
-          ...previous,
-          {
-            id: `assistant-${Date.now()}`,
-            role: "assistant",
-            content:
-              data.answer ||
-              "DrugAssist did not return an answer."
-          }
-        ]);
-
       }
+
+
+      if (
+        data.chat_id ||
+        data.conversation_id
+      ) {
+
+        setCurrentConversationId(
+          data.chat_id ||
+          data.conversation_id
+        );
+      }
+
+
+      await loadConversations();
+
+
+      const assistantMessage = {
+
+        id:
+          `assistant-${Date.now()}`,
+
+        role: "assistant",
+
+        content:
+          data.answer ||
+          "DrugAssist did not return an answer.",
+
+        /*
+         * These fields are extremely important.
+         * They allow Message.jsx to display
+         * clickable citations.
+         */
+
+        sources:
+          Array.isArray(data.sources)
+            ? data.sources
+            : [],
+
+        videos:
+          Array.isArray(data.videos)
+            ? data.videos
+            : [],
+
+        attachments:
+          Array.isArray(data.attachments)
+            ? data.attachments
+            : [],
+
+        evidence:
+          Array.isArray(data.evidence)
+            ? data.evidence
+            : [],
+
+        confidence:
+          data.confidence ??
+          null,
+
+        grounding_score:
+          data.grounding_score ??
+          null,
+
+        mode:
+          data.mode ??
+          null,
+
+        image_analysis:
+          data.image_analysis ??
+          null
+      };
+
+
+      setMessages(
+        (previous) => [
+          ...previous,
+          assistantMessage
+        ]
+      );
+
 
     } catch (error) {
 
-      console.error("DRUGASSIST ERROR:", error);
+      console.error(
+        "DRUGASSIST ERROR:",
+        error
+      );
+
 
       if (
-        error.message?.includes("session has expired")
+        error.message?.includes(
+          "session has expired"
+        )
       ) {
+
         handleLogout();
         return;
       }
 
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: `error-${Date.now()}`,
-          role: "assistant",
-          content:
-            error.message ||
-            "Sorry, something went wrong."
-        }
-      ]);
+
+      setMessages(
+        (previous) => [
+          ...previous,
+
+          {
+            id:
+              `error-${Date.now()}`,
+
+            role: "assistant",
+
+            content:
+              error.message ||
+              "Sorry, something went wrong."
+          }
+        ]
+      );
 
     } finally {
+
       setLoading(false);
     }
-
   };
 
 
@@ -1006,61 +1361,81 @@ function App() {
     isImage = false
   ) => {
 
-    if (!file) {
-      return;
-    }
+    if (!file) return;
 
 
-    // ==========================================================
-    // IMAGE - OCR + VISION
-    // ==========================================================
+    // ----------------------------------------------------------
+    // IMAGE
+    // ----------------------------------------------------------
 
     if (isImage) {
 
-      const token =
-        localStorage.getItem("aura_token");
-
-      if (!token) {
-        handleLogout();
+      if (
+        !file.type.startsWith(
+          "image/"
+        )
+      ) {
         return;
       }
 
-      if (!file.type.startsWith("image/")) {
+
+      if (
+        file.size >
+        15 * 1024 * 1024
+      ) {
+
+        setMessages(
+          (previous) => [
+            ...previous,
+
+            {
+              id:
+                `image-error-${Date.now()}`,
+
+              role: "assistant",
+
+              content:
+                "Please select an image smaller than 15 MB."
+            }
+          ]
+        );
+
         return;
       }
 
-      if (file.size > 15 * 1024 * 1024) {
-        setMessages((previous) => [
-          ...previous,
-          {
-            id: `image-error-${Date.now()}`,
-            role: "assistant",
-            content: "Please select an image smaller than 15 MB."
-          }
-        ]);
-        return;
-      }
 
       if (pendingImagePreview) {
-        URL.revokeObjectURL(pendingImagePreview);
+
+        URL.revokeObjectURL(
+          pendingImagePreview
+        );
       }
 
-      const previewUrl = URL.createObjectURL(file);
+
+      const previewUrl =
+        URL.createObjectURL(
+          file
+        );
+
 
       setPendingImage({
         file,
         name: file.name
       });
-      setPendingImagePreview(previewUrl);
+
+
+      setPendingImagePreview(
+        previewUrl
+      );
+
 
       return;
-
     }
 
 
-    // ==========================================================
-
-    // ==========================================================
+    // ----------------------------------------------------------
+    // PDF
+    // ----------------------------------------------------------
 
     if (
       file.type !==
@@ -1072,30 +1447,20 @@ function App() {
           ...previous,
 
           {
-
             id:
               `pdf-error-${Date.now()}`,
 
-            role:
-              "assistant",
+            role: "assistant",
 
             content:
               "Please select a PDF file."
-
           }
-
         ]
       );
 
-
       return;
-
     }
 
-
-    // ==========================================================
-    // AUTH CHECK
-    // ==========================================================
 
     const token =
       localStorage.getItem(
@@ -1106,33 +1471,23 @@ function App() {
     if (!token) {
 
       handleLogout();
-
       return;
-
     }
 
-
-    // ==========================================================
-    // SHOW UPLOADING
-    // ==========================================================
 
     setMessages(
       (previous) => [
         ...previous,
 
         {
-
           id:
             `upload-${Date.now()}`,
 
-          role:
-            "user",
+          role: "user",
 
           content:
             `Uploading ${file.name}...`
-
         }
-
       ]
     );
 
@@ -1141,6 +1496,14 @@ function App() {
 
 
     try {
+
+      /*
+       * The BACKEND is responsible for
+       * trusted-PDF fingerprint validation.
+       *
+       * Unknown/fabricated PDFs should be rejected
+       * before they become authoritative RAG sources.
+       */
 
       const data =
         await uploadPDF(file);
@@ -1153,17 +1516,22 @@ function App() {
 
 
       if (
-        data.document_id !== undefined &&
-        data.document_id !== null
+        data.document_id !==
+          undefined &&
+        data.document_id !==
+          null
       ) {
+
         setSelectedDocumentId(
           data.document_id
         );
 
         setSelectedDocumentName(
-          data.filename || file.name
+          data.filename ||
+          file.name
         );
       }
+
 
       await loadDocuments();
 
@@ -1171,11 +1539,13 @@ function App() {
       setMessages(
         (previous) => [
           ...previous,
+
           {
             id:
               `pdf-success-${Date.now()}`,
-            role:
-              "assistant",
+
+            role: "assistant",
+
             content:
               `${file.name} is ready and selected. Type your question below and press Send.`
           }
@@ -1198,9 +1568,7 @@ function App() {
       ) {
 
         handleLogout();
-
         return;
-
       }
 
 
@@ -1209,256 +1577,244 @@ function App() {
           ...previous,
 
           {
-
             id:
               `pdf-error-${Date.now()}`,
 
-            role:
-              "assistant",
+            role: "assistant",
 
             content:
-              error.message?.startsWith("PDF upload failed.")
-                ? error.message
-                : `PDF upload failed.\n\n${error.message || "Unable to upload PDF."}`
-
+              `PDF upload failed.\n\n${error.message}`
           }
-
         ]
       );
-
 
     } finally {
 
       setLoading(false);
-
     }
-
   };
 
 
   // ============================================================
-  // REMOVE PENDING IMAGE
+  // REMOVE IMAGE
   // ============================================================
 
   const removePendingImage = () => {
+
     if (pendingImagePreview) {
-      URL.revokeObjectURL(pendingImagePreview);
+
+      URL.revokeObjectURL(
+        pendingImagePreview
+      );
     }
 
+
     setPendingImage(null);
+
     setPendingImagePreview("");
   };
 
 
   // ============================================================
-  // VOICE - GET AUTH TOKEN
-  // ============================================================
-
-  const getVoiceToken = () => {
-
-    const token =
-      localStorage.getItem(
-        "aura_token"
-      );
-
-
-    if (!token) {
-
-      handleLogout();
-
-      throw new Error(
-        "Your session has expired. Please log in again."
-      );
-
-    }
-
-
-    return token;
-
-  };
-
-
-  // ============================================================
-  // VOICE - TEXT TO SPEECH
+  // VOICE
   // ============================================================
 
   const speakAnswer = async (
     answer
   ) => {
 
-    if (!answer) {
-      return;
-    }
+    if (!answer) return;
+
 
     try {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-        const cleanText = answer
-          .replace(/\[Source[^\]]*\]/gi, "")
-          .replace(/\[\^?[0-9]+\]/gi, "")
-          .replace(/[*#_`>]/g, "")
-          .replace(/\n+/g, " ")
-          .trim();
 
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
+      if (
+        "speechSynthesis" in window
+      ) {
+
+        window.speechSynthesis.cancel();
+
+
+        const cleanText =
+          answer
+            .replace(
+              /\[Source[^\]]*\]/gi,
+              ""
+            )
+            .replace(
+              /\[\^?[0-9]+\]/gi,
+              ""
+            )
+            .replace(
+              /[*#_`>]/g,
+              ""
+            )
+            .replace(
+              /\n+/g,
+              " "
+            )
+            .trim();
+
+
+        const utterance =
+          new SpeechSynthesisUtterance(
+            cleanText
+          );
+
+
+        utterance.rate = 1;
+
+        utterance.pitch = 1;
+
+
         utterance.onstart = () => {
-          setVoiceStatus("Speaking response...");
+          setVoiceStatus(
+            "Speaking response..."
+          );
         };
+
+
         utterance.onend = () => {
           setVoiceStatus("");
         };
+
+
         utterance.onerror = () => {
           setVoiceStatus("");
         };
-        window.speechSynthesis.speak(utterance);
+
+
+        window.speechSynthesis.speak(
+          utterance
+        );
       }
+
     } catch (error) {
-      console.error("TEXT TO SPEECH ERROR:", error);
+
+      console.error(
+        "TTS ERROR:",
+        error
+      );
+
       setVoiceStatus("");
     }
   };
 
 
-  // ============================================================
-  // VOICE - SEND RECORDED AUDIO TO BACKEND
-  // ============================================================
+  const processVoiceRecording =
+    async (
+      audioBlob
+    ) => {
 
-  const processVoiceRecording = async (
-    audioBlob
-  ) => {
-
-    if (
-      !audioBlob ||
-      audioBlob.size === 0
-    ) {
-
-      throw new Error(
-        "No audio was recorded."
-      );
-
-    }
-
-
-    const token =
-      getVoiceToken();
-
-
-    setLoading(true);
-
-
-    setVoiceStatus(
-      "Understanding your voice..."
-    );
-
-
-    try {
-
-      const data =
-        await voiceAsk(
-          audioBlob,
-          "",
-          currentConversationId,
-          selectedDocumentId
-        );
-
-      if (data.conversation_id) {
-        setCurrentConversationId(
-          data.conversation_id
-        );
-      }
-
-      await loadConversations();
-
-
-      const transcript =
-        data.transcript?.trim();
-
-
-      const answer =
-        data.answer?.trim();
-
-
-      if (!transcript) {
+      if (
+        !audioBlob ||
+        audioBlob.size === 0
+      ) {
 
         throw new Error(
-          "DrugAssist could not understand the recording."
+          "No audio was recorded."
         );
-
       }
 
 
-      // ----------------------------------------------------------
-      // ADD TRANSCRIPT TO CHAT
-      // ----------------------------------------------------------
-
-      setMessages(
-        (previous) => [
-
-          ...previous,
-
-          {
-
-            id:
-              `voice-user-${Date.now()}`,
-
-            role:
-              "user",
-
-            content:
-              transcript
-
-          },
-
-          {
-
-            id:
-              `voice-assistant-${Date.now() + 1}`,
-
-            role:
-              "assistant",
-
-            content:
-              answer ||
-              "DrugAssist did not return an answer."
-
-          }
-
-        ]
-      );
-
+      setLoading(true);
 
       setVoiceStatus(
-        "Voice response ready."
+        "Understanding your voice..."
       );
 
 
-      // ----------------------------------------------------------
-      // SPEAK ANSWER
-      // ----------------------------------------------------------
+      try {
 
-      if (answer) {
+        const data =
+          await voiceAsk(
+            audioBlob,
+            "",
+            currentConversationId,
+            selectedDocumentId
+          );
 
-        await speakAnswer(
-          answer
+
+        if (
+          data.conversation_id
+        ) {
+
+          setCurrentConversationId(
+            data.conversation_id
+          );
+        }
+
+
+        await loadConversations();
+
+
+        const transcript =
+          data.transcript?.trim();
+
+
+        const answer =
+          data.answer?.trim();
+
+
+        if (!transcript) {
+
+          throw new Error(
+            "DrugAssist could not understand the recording."
+          );
+        }
+
+
+        setMessages(
+          (previous) => [
+            ...previous,
+
+            {
+              id:
+                `voice-user-${Date.now()}`,
+
+              role: "user",
+
+              content:
+                transcript
+            },
+
+            {
+              id:
+                `voice-assistant-${Date.now() + 1}`,
+
+              role: "assistant",
+
+              content:
+                answer ||
+                "DrugAssist did not return an answer.",
+
+              sources:
+                Array.isArray(data.sources)
+                  ? data.sources
+                  : []
+            }
+          ]
         );
 
+
+        setVoiceStatus(
+          "Voice response ready."
+        );
+
+
+        if (answer) {
+
+          await speakAnswer(
+            answer
+          );
+        }
+
+      } finally {
+
+        setLoading(false);
       }
+    };
 
-
-    } finally {
-
-      setLoading(false);
-
-    }
-
-  };
-
-
-  // ============================================================
-  // VOICE - START RECORDING
-  // ============================================================
 
   const startRecording = async () => {
 
@@ -1469,60 +1825,126 @@ function App() {
       return;
     }
 
-    // 1. Try native Web Speech API (real-time voice typing)
+
     const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
+
+    // ----------------------------------------------------------
+    // BROWSER SPEECH RECOGNITION
+    // ----------------------------------------------------------
 
     if (SpeechRecognition) {
+
       try {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = true;
-        recognition.lang = "en-US";
+
+        const recognition =
+          new SpeechRecognition();
+
+
+        recognition.continuous =
+          false;
+
+        recognition.interimResults =
+          true;
+
+        recognition.lang =
+          "en-US";
+
 
         recognition.onstart = () => {
+
           setIsRecording(true);
-          setVoiceStatus("Listening... speak now");
+
+          setVoiceStatus(
+            "Listening... speak now"
+          );
         };
 
-        recognition.onresult = (event) => {
-          let text = "";
-          for (let i = 0; i < event.results.length; i++) {
-            text += event.results[i][0].transcript;
-          }
-          if (text) {
-            setInput(text);
-          }
-        };
 
-        recognition.onerror = (event) => {
-          console.warn("Speech recognition notice:", event.error);
-          setIsRecording(false);
-          if (event.error === "not-allowed") {
-            setVoiceStatus("Microphone access denied. Please allow microphone permissions in browser.");
-          } else if (event.error === "no-speech") {
-            setVoiceStatus("No speech detected. Please click mic and try again.");
-          } else {
-            setVoiceStatus(`Microphone notice: ${event.error}`);
-          }
-          setTimeout(() => setVoiceStatus(""), 4500);
-        };
+        recognition.onresult =
+          (event) => {
+
+            let text = "";
+
+            for (
+              let i = 0;
+              i < event.results.length;
+              i++
+            ) {
+
+              text +=
+                event.results[i][0]
+                  .transcript;
+            }
+
+
+            if (text) {
+
+              setInput(text);
+            }
+          };
+
+
+        recognition.onerror =
+          (event) => {
+
+            console.warn(
+              "Speech recognition:",
+              event.error
+            );
+
+            setIsRecording(false);
+
+            setVoiceStatus(
+              event.error ===
+                "not-allowed"
+                ? "Microphone access denied."
+                : "No speech detected. Please try again."
+            );
+
+
+            setTimeout(
+              () => setVoiceStatus(""),
+              4000
+            );
+          };
+
 
         recognition.onend = () => {
+
           setIsRecording(false);
+
           setVoiceStatus("");
-          speechRecognitionRef.current = null;
+
+          speechRecognitionRef.current =
+            null;
         };
 
-        speechRecognitionRef.current = recognition;
+
+        speechRecognitionRef.current =
+          recognition;
+
+
         recognition.start();
+
         return;
-      } catch (err) {
-        console.warn("SpeechRecognition fallback to MediaRecorder:", err);
+
+      } catch (error) {
+
+        console.warn(
+          "SpeechRecognition fallback:",
+          error
+        );
       }
     }
 
-    // 2. Fallback: MediaRecorder + Groq Whisper
+
+    // ----------------------------------------------------------
+    // MEDIA RECORDER FALLBACK
+    // ----------------------------------------------------------
+
     if (
       !navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia
@@ -1531,22 +1953,12 @@ function App() {
       setVoiceStatus(
         "Your browser does not support microphone recording."
       );
-      setTimeout(() => setVoiceStatus(""), 4000);
 
       return;
-
     }
 
 
     try {
-
-      getVoiceToken();
-
-
-      setVoiceStatus(
-        "Requesting microphone access..."
-      );
-
 
       const stream =
         await navigator.mediaDevices
@@ -1563,56 +1975,19 @@ function App() {
         [];
 
 
-      let mimeType =
-        "audio/webm";
-
-
-      if (
+      const mimeType =
         MediaRecorder.isTypeSupported(
           "audio/webm;codecs=opus"
         )
-      ) {
-
-        mimeType =
-          "audio/webm;codecs=opus";
-
-      } else if (
-        MediaRecorder.isTypeSupported(
-          "audio/webm"
-        )
-      ) {
-
-        mimeType =
-          "audio/webm";
-
-      } else if (
-        MediaRecorder.isTypeSupported(
-          "audio/ogg;codecs=opus"
-        )
-      ) {
-
-        mimeType =
-          "audio/ogg;codecs=opus";
-
-      } else {
-
-        mimeType =
-          "";
-
-      }
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
 
 
       const recorder =
-        mimeType
-          ? new MediaRecorder(
-              stream,
-              {
-                mimeType
-              }
-            )
-          : new MediaRecorder(
-              stream
-            );
+        new MediaRecorder(
+          stream,
+          { mimeType }
+        );
 
 
       mediaRecorderRef.current =
@@ -1630,25 +2005,7 @@ function App() {
             audioChunksRef.current.push(
               event.data
             );
-
           }
-
-        };
-
-
-      recorder.onerror =
-        (event) => {
-
-          console.error(
-            "MEDIA RECORDER ERROR:",
-            event
-          );
-
-          setVoiceStatus(
-            "Microphone recording failed."
-          );
-          setIsRecording(false);
-
         };
 
 
@@ -1657,18 +2014,13 @@ function App() {
 
           try {
 
-            const actualMimeType =
-              recorder.mimeType ||
-              mimeType ||
-              "audio/webm";
-
-
             const audioBlob =
               new Blob(
                 audioChunksRef.current,
                 {
                   type:
-                    actualMimeType
+                    recorder.mimeType ||
+                    "audio/webm"
                 }
               );
 
@@ -1688,7 +2040,6 @@ function App() {
 
               streamRef.current =
                 null;
-
             }
 
 
@@ -1700,24 +2051,19 @@ function App() {
               audioBlob
             );
 
-
           } catch (error) {
 
             console.error(
-              "VOICE PROCESSING ERROR:",
+              "VOICE ERROR:",
               error
             );
 
-
             setVoiceStatus(
-              `Voice input failed: ${error.message}`
+              error.message
             );
 
-
             setLoading(false);
-
           }
-
         };
 
 
@@ -1730,7 +2076,6 @@ function App() {
         "Listening... click microphone again to stop."
       );
 
-
     } catch (error) {
 
       console.error(
@@ -1738,87 +2083,59 @@ function App() {
         error
       );
 
-
       setIsRecording(false);
 
-      if (
-        error.name ===
-        "NotAllowedError"
-      ) {
-
-        setVoiceStatus(
-          "Microphone permission was denied. Please allow microphone access in your browser."
-        );
-
-      } else if (
-        error.name ===
-        "NotFoundError"
-      ) {
-
-        setVoiceStatus(
-          "No microphone was found."
-        );
-
-      } else {
-
-        setVoiceStatus(
-          `Unable to start microphone: ${error.message}`
-        );
-
-      }
-      setTimeout(() => setVoiceStatus(""), 4500);
-
+      setVoiceStatus(
+        "Unable to access microphone."
+      );
     }
-
   };
 
 
-  // ============================================================
-  // VOICE - STOP RECORDING
-  // ============================================================
-
   const stopRecording = () => {
 
-    if (speechRecognitionRef.current) {
+    if (
+      speechRecognitionRef.current
+    ) {
+
       try {
         speechRecognitionRef.current.stop();
-      } catch (err) {
-        // ignore
-      }
-      speechRecognitionRef.current = null;
+      } catch {}
+
+      speechRecognitionRef.current =
+        null;
+
+      setIsRecording(false);
+
+      return;
     }
+
 
     const recorder =
       mediaRecorderRef.current;
 
 
-    if (recorder && recorder.state === "recording") {
-
-      setIsRecording(false);
+    if (
+      recorder &&
+      recorder.state === "recording"
+    ) {
 
       setVoiceStatus(
         "Processing your voice..."
       );
 
-
       recorder.stop();
 
     } else {
+
       setIsRecording(false);
     }
-
   };
 
 
-  // ============================================================
-  // VOICE BUTTON
-  // ============================================================
-
   const handleVoice = () => {
 
-    if (loading) {
-      return;
-    }
+    if (loading) return;
 
 
     if (isRecording) {
@@ -1828,10 +2145,57 @@ function App() {
     } else {
 
       startRecording();
-
     }
-
   };
+
+
+  // ============================================================
+  // CLEANUP
+  // ============================================================
+
+  useEffect(() => {
+
+    return () => {
+
+      if (
+        mediaRecorderRef.current
+      ) {
+
+        try {
+
+          if (
+            mediaRecorderRef.current.state !==
+            "inactive"
+          ) {
+            mediaRecorderRef.current.stop();
+          }
+
+        } catch {}
+      }
+
+
+      if (streamRef.current) {
+
+        streamRef.current
+          .getTracks()
+          .forEach(
+            (track) =>
+              track.stop()
+          );
+      }
+
+
+      if (
+        speechRecognitionRef.current
+      ) {
+
+        try {
+          speechRecognitionRef.current.stop();
+        } catch {}
+      }
+    };
+
+  }, []);
 
 
   // ============================================================
@@ -1842,12 +2206,9 @@ function App() {
 
     return (
       <AuthPage
-        onLogin={
-          handleLogin
-        }
+        onLogin={handleLogin}
       />
     );
-
   }
 
 
@@ -1860,6 +2221,7 @@ function App() {
     <div className="app-shell">
 
       <style>{`
+
         .chat-area p {
           margin-top: 0;
           margin-bottom: 12px;
@@ -1885,30 +2247,11 @@ function App() {
           line-height: 1.3;
         }
 
-        .chat-area h1:first-child,
-        .chat-area h2:first-child,
-        .chat-area h3:first-child,
-        .chat-area h4:first-child {
-          margin-top: 0;
-        }
-
-        .chat-area > * {
-          max-width: 100%;
-        }
-        /*
-          CHAT SCROLL FIX
-          ----------------------------------------------------------
-          .chat-area is the only scrollable element. ChatWindow's
-          original height/overflow rules are overridden here so the
-          message list grows naturally and the outer chat area can
-          always scroll to the newest message.
-        */
         .chat-area .chat-window {
           width: 100% !important;
           height: auto !important;
           min-height: 0 !important;
           overflow: visible !important;
-          display: block !important;
         }
 
         .chat-area .chat-window .messages {
@@ -1919,39 +2262,28 @@ function App() {
           margin: 0 auto !important;
           padding: 28px 24px 40px !important;
           box-sizing: border-box !important;
-          overflow: visible !important;
         }
 
-        /*
-          CLEAN NEW-CHAT SCREEN
-          ----------------------------------------------------------
-          No Web Search / PDF / SQL / Image cards.
-          The capabilities remain available through the composer
-          and backend; they are simply not displayed as cards.
-        */
         .drugassist-empty-state {
           width: 100%;
           min-height: 100%;
-          box-sizing: border-box;
           display: flex;
           align-items: center;
           justify-content: center;
           padding: 40px 24px 120px;
+          box-sizing: border-box;
         }
 
         .drugassist-empty-content {
           width: min(720px, 100%);
           text-align: center;
-          margin-top: -80px;
         }
 
         .drugassist-empty-title {
           margin: 0 0 10px;
-          font-size: clamp(30px, 4vw, 42px);
+          font-size: 42px;
           line-height: 1.15;
           font-weight: 700;
-          letter-spacing: -0.8px;
-          color: #171717;
         }
 
         .drugassist-empty-subtitle {
@@ -1961,56 +2293,240 @@ function App() {
           color: #777b84;
         }
 
-        @media (max-width: 900px) {
-          .chat-area {
-            padding-left: 20px !important;
-            padding-right: 20px !important;
+
+        /* ======================================================
+           PDF VIEWER
+        ====================================================== */
+
+        .pdf-viewer-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          background: rgba(0, 0, 0, 0.72);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          box-sizing: border-box;
+        }
+
+        .pdf-viewer-container {
+          width: min(1200px, 100%);
+          height: min(92vh, 900px);
+          background: white;
+          border-radius: 14px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        }
+
+        .pdf-viewer-header {
+          height: 58px;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 16px;
+          border-bottom: 1px solid #e5e7eb;
+          background: #ffffff;
+        }
+
+        .pdf-viewer-title {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          min-width: 0;
+          font-weight: 600;
+        }
+
+        .pdf-viewer-title span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .pdf-viewer-page-label {
+          font-size: 13px;
+          font-weight: 500;
+          color: #6b7280;
+          flex-shrink: 0;
+        }
+
+        .pdf-viewer-close {
+          border: 0;
+          background: transparent;
+          cursor: pointer;
+          width: 38px;
+          height: 38px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .pdf-viewer-close:hover {
+          background: #f3f4f6;
+        }
+
+        .pdf-viewer-body {
+          flex: 1;
+          min-height: 0;
+          background: #525659;
+        }
+
+        .pdf-viewer-frame {
+          width: 100%;
+          height: 100%;
+          border: 0;
+          display: block;
+        }
+
+        .pdf-viewer-loading {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          gap: 12px;
+        }
+
+        .pdf-spinner {
+          width: 32px;
+          height: 32px;
+          border: 3px solid rgba(255,255,255,0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: pdf-spin 0.8s linear infinite;
+        }
+
+        @keyframes pdf-spin {
+          to {
+            transform: rotate(360deg);
           }
         }
+
+
+        @media (max-width: 700px) {
+
+          .pdf-viewer-overlay {
+            padding: 0;
+          }
+
+          .pdf-viewer-container {
+            width: 100%;
+            height: 100%;
+            border-radius: 0;
+          }
+
+          .pdf-viewer-header {
+            height: 52px;
+          }
+        }
+
       `}</style>
 
-
-      {/* Skip to content link (Item 12: A11y) */}
-      <a href="#main-chat-area" className="skip-to-content">
-        Skip to main content ↓
-      </a>
 
       {/* ======================================================
           SIDEBAR
       ====================================================== */}
 
       <Sidebar
-        user={user}
-        chats={conversations}
-        activeChatId={currentConversationId}
-        currentView={currentView}
-        onNewChat={handleNewChat}
-        onViewChat={handleOpenChat}
-        onSelectChat={handleOpenConversation}
-        onDeleteChat={handleDeleteChat}
-        onLibrary={handleOpenLibrary}
-        onLogout={handleLogout}
-        mobileOpen={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-        onOpenPrivacy={() => setShowPrivacy(true)}
-        onOpenTerms={() => setShowTerms(true)}
 
-        /* Keep these props for compatibility with the existing
-           document-selection implementation. */
-        conversations={conversations}
-        currentConversationId={currentConversationId}
-        onSelectConversation={handleOpenConversation}
-        uploadedFiles={uploadedFiles}
-        uploadedDocuments={uploadedDocuments}
-        selectedDocumentId={selectedDocumentId}
-        onSelectDocument={handleSelectDocument}
-        onDeleteDocument={handleDeleteDocument}
-        onDeleteAllChats={handleDeleteAllConversations}
+        user={user}
+
+        chats={conversations}
+
+        activeChatId={
+          currentConversationId
+        }
+
+        currentView={
+          currentView
+        }
+
+        onNewChat={
+          handleNewChat
+        }
+
+        onViewChat={
+          handleOpenChat
+        }
+
+        onSelectChat={
+          handleOpenConversation
+        }
+
+        onDeleteChat={
+          handleDeleteChat
+        }
+
+        onLibrary={
+          handleOpenLibrary
+        }
+
+        onLogout={
+          handleLogout
+        }
+
+        mobileOpen={
+          mobileOpen
+        }
+
+        onClose={() =>
+          setMobileOpen(false)
+        }
+
+        onOpenPrivacy={() =>
+          setShowPrivacy(true)
+        }
+
+        onOpenTerms={() =>
+          setShowTerms(true)
+        }
+
+        conversations={
+          conversations
+        }
+
+        currentConversationId={
+          currentConversationId
+        }
+
+        onSelectConversation={
+          handleOpenConversation
+        }
+
+        uploadedFiles={
+          uploadedFiles
+        }
+
+        uploadedDocuments={
+          uploadedDocuments
+        }
+
+        selectedDocumentId={
+          selectedDocumentId
+        }
+
+        onSelectDocument={
+          handleSelectDocument
+        }
+
+        onDeleteDocument={
+          handleDeleteDocument
+        }
+
+        onDeleteAllChats={
+          handleDeleteAllConversations
+        }
       />
 
 
       {/* ======================================================
-          MAIN AREA
+          MAIN
       ====================================================== */}
 
       <section
@@ -2035,52 +2551,67 @@ function App() {
           <button
             type="button"
             className="mobile-menu-button"
-            onClick={() => setMobileOpen(true)}
+            onClick={() =>
+              setMobileOpen(true)
+            }
             aria-label="Open sidebar"
           >
             <Menu size={18} />
           </button>
 
+
           <div className="mobile-brand">
+
             <Pill size={16} />
-            <span>DrugAssist</span>
+
+            <span>
+              DrugAssist
+            </span>
+
           </div>
 
+
           <div className="topbar-spacer" />
+
 
           <div className="topbar-actions">
 
             <button
               type="button"
               className="theme-button"
-              onClick={toggleTheme}
+              onClick={
+                toggleTheme
+              }
               title={
                 theme === "light"
                   ? "Switch to dark mode"
                   : "Switch to light mode"
               }
-              aria-label={
-                theme === "light"
-                  ? "Switch to dark mode"
-                  : "Switch to light mode"
-              }
             >
+
               {theme === "light" ? (
-                <Moon size={18} strokeWidth={2} />
+                <Moon size={18} />
               ) : (
-                <Sun size={18} strokeWidth={2} />
+                <Sun size={18} />
               )}
+
             </button>
 
           </div>
 
         </header>
 
-        {/* Scroll Progress Bar (Item 8) */}
+
+        {/* ====================================================
+            SCROLL PROGRESS
+        ==================================================== */}
+
         <div
           className="scroll-progress-bar"
-          style={{ width: `${scrollProgress}%` }}
-          aria-hidden="true"
+          style={{
+            width:
+              `${scrollProgress}%`
+          }}
         />
 
 
@@ -2089,15 +2620,45 @@ function App() {
         ==================================================== */}
 
         {currentView === "library" ? (
+
           <Library
-            apiUrl={API_BASE_URL}
-            token={localStorage.getItem("aura_token")}
-            onBack={handleOpenChat}
-            selectedDocumentId={selectedDocumentId}
-            onSelectDocument={handleSelectDocument}
-            onViewPdf={handleOpenCitation}
+
+            apiUrl={
+              API_BASE_URL
+            }
+
+            token={
+              localStorage.getItem(
+                "aura_token"
+              )
+            }
+
+            onBack={
+              handleOpenChat
+            }
+
+            selectedDocumentId={
+              selectedDocumentId
+            }
+
+            onSelectDocument={
+              handleSelectDocument
+            }
+
+            /*
+             * NEW:
+             * Library can call this when the
+             * user wants to actually OPEN
+             * the PDF.
+             */
+            onOpenDocument={
+              handleOpenDocument
+            }
+
           />
+
         ) : (
+
           <div
             id="main-chat-area"
             ref={chatAreaRef}
@@ -2112,45 +2673,102 @@ function App() {
             }}
           >
 
+
             {messages.length === 0 && (
+
               <div className="welcome-screen">
-                <div className="welcome-logo" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-                    <rect x="2" y="2" width="20" height="20" rx="4" fill="#0f172a" />
-                    <path d="M12 6v12" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
-                    <path d="M6 12h12" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+
+                <div
+                  className="welcome-logo"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}
+                >
+
+                  <svg
+                    width="36"
+                    height="36"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+
+                    <rect
+                      x="2"
+                      y="2"
+                      width="20"
+                      height="20"
+                      rx="4"
+                      fill="#0f172a"
+                    />
+
+                    <path
+                      d="M12 6v12"
+                      stroke="#38bdf8"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+
+                    <path
+                      d="M6 12h12"
+                      stroke="#38bdf8"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+
                   </svg>
+
                 </div>
+
 
                 <h2>
                   Prescribing Information Assistant
                 </h2>
 
+
                 <p>
-                  Grounded clinical drug intelligence with official citations. Query indications, dosages, contraindications, boxed warnings, and drug interactions directly from official labeling literature.
+                  Grounded clinical drug
+                  intelligence with official
+                  citations. Query indications,
+                  dosages, contraindications,
+                  boxed warnings, and drug
+                  interactions directly from
+                  official labeling literature.
                 </p>
 
-                {/* Expandable Clinical FAQ (Item 19) */}
+
                 <FAQAccordion />
+
               </div>
             )}
 
+
             {messages.length > 0 && (
+
               <ChatWindow
-                messages={messages}
-                loading={loading}
-                onOpenCitation={handleOpenCitation}
+
+                messages={
+                  messages
+                }
+
+                loading={
+                  loading
+                }
+
+                /*
+                 * NEW:
+                 * Message.jsx should call this
+                 * when a citation is clicked.
+                 */
+                onOpenSource={
+                  handleOpenSource
+                }
+
               />
+
             )}
 
-            <div
-              ref={chatEndRef}
-              aria-hidden="true"
-              style={{
-                height: "1px",
-                width: "100%"
-              }}
-            />
 
           </div>
         )}
@@ -2160,29 +2778,27 @@ function App() {
             VOICE STATUS
         ==================================================== */}
 
-        {currentView === "chat" && voiceStatus && (
+        {currentView === "chat" &&
+          voiceStatus && (
 
-          <div
-            className={
-              isRecording
-                ? "voice-status recording"
-                : "voice-status"
-            }
-          >
+            <div
+              className={
+                isRecording
+                  ? "voice-status recording"
+                  : "voice-status"
+              }
+            >
 
-            <span>
+              <span>
+                {isRecording
+                  ? "●"
+                  : "◉"}
+              </span>
 
-              {isRecording
-                ? "●"
-                : "◉"}
+              {voiceStatus}
 
-            </span>
-
-            {voiceStatus}
-
-          </div>
-
-        )}
+            </div>
+          )}
 
 
         {/* ====================================================
@@ -2190,68 +2806,243 @@ function App() {
         ==================================================== */}
 
         {currentView === "chat" && (
+
           <ChatInput
-            value={input}
-            onChange={setInput}
-            onSend={handleSend}
-            onVoice={handleVoice}
-            isRecording={isRecording}
-            voiceStatus={voiceStatus}
-            onFileUpload={handleFileUpload}
-            pendingImage={pendingImage}
-            pendingImagePreview={pendingImagePreview}
-            onRemoveImage={removePendingImage}
-            loading={loading}
-            selectedDocumentName={
-              selectedDocumentId ? selectedDocumentName : null
+
+            value={
+              input
             }
-            onChangeDocument={handleOpenLibrary}
+
+            onChange={
+              setInput
+            }
+
+            onSend={
+              handleSend
+            }
+
+            onVoice={
+              handleVoice
+            }
+
+            isRecording={
+              isRecording
+            }
+
+            voiceStatus={
+              voiceStatus
+            }
+
+            onFileUpload={
+              handleFileUpload
+            }
+
+            pendingImage={
+              pendingImage
+            }
+
+            pendingImagePreview={
+              pendingImagePreview
+            }
+
+            onRemoveImage={
+              removePendingImage
+            }
+
+            loading={
+              loading
+            }
+
+            selectedDocumentName={
+              selectedDocumentId
+                ? selectedDocumentName
+                : null
+            }
+
+            onChangeDocument={
+              handleOpenLibrary
+            }
+
             onClearDocument={() => {
-              setSelectedDocumentId(null);
-              setSelectedDocumentName("");
+
+              setSelectedDocumentId(
+                null
+              );
+
+              setSelectedDocumentName(
+                ""
+              );
             }}
+
           />
+
         )}
 
       </section>
 
-      {/* Floating Scroll-to-Top Button (Item 4) */}
-      {showScrollTop && currentView === "chat" && (
-        <button
-          type="button"
-          className="scroll-to-top-btn"
-          onClick={handleScrollToTop}
-          title="Scroll to top"
-          aria-label="Scroll to top"
-        >
-          <ArrowUp size={18} strokeWidth={2.4} />
-        </button>
-      )}
+
+      {/* ======================================================
+          SCROLL TO TOP
+      ====================================================== */}
+
+      {showScrollTop &&
+        currentView === "chat" && (
+
+          <button
+            type="button"
+            className="scroll-to-top-btn"
+            onClick={
+              handleScrollToTop
+            }
+            title="Scroll to top"
+            aria-label="Scroll to top"
+          >
+            <ArrowUp
+              size={18}
+            />
+          </button>
+
+        )}
+
+
+      {/* ======================================================
+          PRIVACY
+      ====================================================== */}
 
       {showPrivacy && (
-        <PrivacyPolicy onClose={() => setShowPrivacy(false)} />
+
+        <PrivacyPolicy
+          onClose={() =>
+            setShowPrivacy(false)
+          }
+        />
+
       )}
+
+
+      {/* ======================================================
+          TERMS
+      ====================================================== */}
 
       {showTerms && (
-        <TermsAndConditions onClose={() => setShowTerms(false)} />
+
+        <TermsAndConditions
+          onClose={() =>
+            setShowTerms(false)
+          }
+        />
+
       )}
 
-      {activePdfModal && (
-        <PdfViewerModal
-          isOpen={Boolean(activePdfModal)}
-          onClose={() => setActivePdfModal(null)}
-          apiUrl={API_BASE_URL}
-          documentId={activePdfModal.documentId}
-          initialPage={activePdfModal.page}
-          title={activePdfModal.title}
-          drug={activePdfModal.drug}
-        />
+
+      {/* ======================================================
+          PDF VIEWER
+      ====================================================== */}
+
+      {pdfViewer.open && (
+
+        <div
+          className="pdf-viewer-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="PDF viewer"
+        >
+
+          <div className="pdf-viewer-container">
+
+
+            {/* HEADER */}
+
+            <div className="pdf-viewer-header">
+
+              <div className="pdf-viewer-title">
+
+                <FileText
+                  size={18}
+                />
+
+                <span
+                  title={
+                    pdfViewer.filename
+                  }
+                >
+                  {pdfViewer.filename}
+                </span>
+
+
+                <span className="pdf-viewer-page-label">
+
+                  Page{" "}
+                  {pdfViewer.page}
+
+                </span>
+
+              </div>
+
+
+              <button
+                type="button"
+                className="pdf-viewer-close"
+                onClick={
+                  handleClosePdfViewer
+                }
+                aria-label="Close PDF viewer"
+              >
+
+                <X
+                  size={20}
+                />
+
+              </button>
+
+            </div>
+
+
+            {/* PDF */}
+
+            <div className="pdf-viewer-body">
+
+              {pdfLoading ? (
+
+                <div className="pdf-viewer-loading">
+
+                  <div className="pdf-spinner" />
+
+                  <p>
+                    Loading verified PDF...
+                  </p>
+
+                </div>
+
+              ) : (
+
+                <iframe
+
+                  className="pdf-viewer-frame"
+
+                  src={
+                    `${pdfViewer.url}#page=${pdfViewer.page}`
+                  }
+
+                  title={
+                    pdfViewer.filename ||
+                    "Drug Information PDF"
+                  }
+
+                />
+
+              )}
+
+            </div>
+
+          </div>
+
+        </div>
+
       )}
 
     </div>
-
   );
-
 }
 
 

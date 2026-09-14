@@ -1,12 +1,20 @@
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // =========================================================
 // HELPERS
 // =========================================================
 
 function getToken() {
-  return localStorage.getItem("token") || localStorage.getItem("aura_token");
+  return (
+    localStorage.getItem("token") ||
+    localStorage.getItem("aura_token")
+  );
+}
+
+function clearAuth() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("aura_token");
 }
 
 function authHeaders(extra = {}) {
@@ -111,6 +119,12 @@ export async function loginUser(
       "token",
       data.access_token
     );
+
+    // Keep compatibility with the rest of the app
+    localStorage.setItem(
+      "aura_token",
+      data.access_token
+    );
   }
 
   return data;
@@ -140,11 +154,11 @@ export async function logoutUser() {
 
     const data = await parseResponse(response);
 
-    localStorage.removeItem("token");
+    clearAuth();
 
     return data;
   } catch (error) {
-    localStorage.removeItem("token");
+    clearAuth();
     throw error;
   }
 }
@@ -304,6 +318,79 @@ export async function deleteDocument(
 }
 
 // =========================================================
+// OPEN AUTHENTICATED PDF
+// =========================================================
+
+export async function getDocumentPDF(
+  documentId
+) {
+  const token = getToken();
+
+  if (!token) {
+    throw new Error(
+      "You are not logged in."
+    );
+  }
+
+  if (!documentId) {
+    throw new Error(
+      "Missing document ID."
+    );
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/documents/${documentId}/pdf`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (response.status === 401) {
+    clearAuth();
+
+    throw new Error(
+      "Your session has expired. Please log in again."
+    );
+  }
+
+  if (!response.ok) {
+    let message =
+      "Unable to open PDF.";
+
+    try {
+      const data =
+        await response.json();
+
+      message =
+        data?.detail ||
+        data?.message ||
+        message;
+    } catch {
+      // Ignore JSON parsing failure
+    }
+
+    throw new Error(message);
+  }
+
+  const blob =
+    await response.blob();
+
+  if (
+    blob.type &&
+    blob.type !== "application/pdf"
+  ) {
+    throw new Error(
+      "The server did not return a PDF file."
+    );
+  }
+
+  return blob;
+}
+
+// =========================================================
 // DELETE PDF
 // =========================================================
 
@@ -324,9 +411,13 @@ export async function uploadPDF(file) {
     );
   }
 
-  const formData = new FormData();
+  const formData =
+    new FormData();
 
-  formData.append("file", file);
+  formData.append(
+    "file",
+    file
+  );
 
   const response = await fetch(
     `${API_BASE_URL}/upload-pdf`,
@@ -349,7 +440,8 @@ export async function askAURA(
   conversationId = null,
   documentId = null
 ) {
-  const formData = new FormData();
+  const formData =
+    new FormData();
 
   formData.append(
     "question",
@@ -398,7 +490,8 @@ export async function askImage(
   conversationId = null,
   documentId = null
 ) {
-  const formData = new FormData();
+  const formData =
+    new FormData();
 
   formData.append(
     "question",
@@ -472,19 +565,26 @@ export async function askWithVoice(
   conversationId = null,
   documentId = null
 ) {
-  // Support both (audio, question, chatId) and (audio, chatId) calling patterns
+  // Support both:
+  // (audio, question, chatId)
+  // and
+  // (audio, chatId)
+
   if (
     typeof question === "number" ||
-    (typeof question === "string" &&
+    (
+      typeof question === "string" &&
       question !== "" &&
       !isNaN(Number(question)) &&
-      conversationId === null)
+      conversationId === null
+    )
   ) {
     conversationId = question;
     question = "";
   }
 
-  const formData = new FormData();
+  const formData =
+    new FormData();
 
   if (audioFile) {
     formData.append(
@@ -566,8 +666,10 @@ export async function askQuestion(
       }),
       body: JSON.stringify({
         question,
-        conversation_id: conversationId,
-        document_id: documentId,
+        conversation_id:
+          conversationId,
+        document_id:
+          documentId,
       }),
     }
   );
@@ -615,6 +717,7 @@ export default {
   deleteDocument,
   deletePDF,
   uploadPDF,
+  getDocumentPDF,
 
   // Chat
   askAURA,

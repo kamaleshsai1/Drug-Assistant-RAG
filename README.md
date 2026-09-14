@@ -1,206 +1,666 @@
-# DrugAssist - Evidence-First Prescribing Information RAG Engine
+# DrugAssist --- Agentic RAG Drug Information Assistant
 
-A grounded Retrieval-Augmented Generation (RAG) system engineered for high-precision queries over pharmaceutical prescribing documentation and drug monographs. DrugAssist extracts and indexes official manufacturer package inserts, parses standardized regulatory sections (Indications, Dosages, Contraindications, Boxed Warnings), and produces cited answers with verifiable page references.
+> An evidence-first AI assistant for retrieving and understanding
+> trusted medication information using Agentic RAG, semantic search,
+> verified pharmaceutical documentation, and large language models.
 
----
+[![Live
+Demo](https://img.shields.io/badge/Live-Demo-success)](https://drug-assist-agentic-rag-1.onrender.com)
+[![Backend](https://img.shields.io/badge/Backend-FastAPI-009688)](https://drug-assist-agentic-rag.onrender.com)
+[![API
+Docs](https://img.shields.io/badge/API-Swagger-85EA2D)](https://drug-assist-agentic-rag.onrender.com/docs)
+[![Frontend](https://img.shields.io/badge/Frontend-React-61DAFB)](https://react.dev/)
+[![Vector
+DB](https://img.shields.io/badge/Vector%20DB-Pinecone-000000)](https://www.pinecone.io/)
+[![LLM](https://img.shields.io/badge/LLM-Groq-orange)](https://groq.com/)
 
-## Live Deployments (Render Cloud)
+## 🌐 Live Application
 
-- **Frontend Web Application**: [https://drugassist-frontend.onrender.com](https://drugassist-frontend.onrender.com)
-- **Backend REST API**: [https://drugassist-backend.onrender.com](https://drugassist-backend.onrender.com)
+-   **Frontend:** https://drug-assist-agentic-rag-1.onrender.com
+-   **Backend API:** https://drug-assist-agentic-rag.onrender.com
+-   **Swagger / OpenAPI:**
+    https://drug-assist-agentic-rag.onrender.com/docs
+-   **GitHub:**
+    https://github.com/Deekshitha-Gajjala/Drug-Assist-Agentic-RAG
 
----
+## 📌 Overview
 
-## Technical Overview
+DrugAssist is an AI-powered drug information assistant built using an
+Agentic Retrieval-Augmented Generation (RAG) architecture.
 
-General-purpose language models often produce hallucinations or conflate dosages when answering clinical questions. DrugAssist mitigates this by restricting answers to retrieved document segments with deterministic citation enforcement. Every claim is mapped to verified manufacturer literature with bracketed page and section citations (`[Source 1, Page 4]`).
+The system retrieves relevant information from trusted pharmaceutical
+documents before generating responses. It combines document retrieval,
+vector search, agentic routing, and LLM reasoning to provide
+evidence-grounded answers.
 
-### Key Capabilities
+A major focus is **document trust and provenance**. User-uploaded
+medication documents are not automatically considered authoritative.
+Before indexing, documents go through verification designed to prevent
+arbitrary, fabricated, or modified medication documents from being
+blindly accepted as trusted sources.
 
-- **Strict Evidence Grounding**: Answers are synthesized exclusively from indexed prescribing information chunks. When literature does not contain the answer, the model explicitly declares insufficient evidence.
-- **Hierarchical Regulatory Parsing**: Ingestion pipeline automatically identifies standardized labeling structures (Sections 1 through 17: Indications & Usage, Dosage & Administration, Contraindications, Warnings & Precautions, Adverse Reactions, Drug Interactions).
-- **Hybrid Real-Time Voice Input**: Dual-mode speech interface utilizing the native browser Web Speech API for zero-latency live dictation, with automated fallback to Groq Whisper (`whisper-large-v3`) via `POST /voice-ask`.
-- **Active Document Targeting**: Query across the entire indexed pharmaceutical database or constrain search to an active PDF document selected from the Library.
-- **Multimodal Visual Inspection**: Ingests drug packaging and label imagery to provide contextual cross-referencing alongside textual monographs.
-- **Session Continuity & Memory**: Persistent conversation threads, document catalog, and user settings backed by SQLite with foreign key integrity.
+## 🎯 Problem Statement
 
----
+Medication information is often available in lengthy
+prescribing-information documents. Finding specific information manually
+can be difficult because documents are long, terminology is complex,
+relevant information can be distributed across sections, and users need
+confidence in the source of an answer.
 
-## Architecture
+DrugAssist addresses this with:
 
+**Trusted Document Verification + Semantic Search + Agentic Routing +
+RAG + LLM Generation**
+
+## 💡 Key Features
+
+### 🔐 Authentication
+
+-   User registration
+-   User login
+-   JWT-based authentication
+-   Protected backend endpoints
+
+### 📄 Trusted Medication Document Upload
+
+The ingestion workflow is:
+
+``` text
+PDF Upload
+    ↓
+Document Verification
+    ↓
+Source / Provenance Validation
+    ↓
+Fingerprint Verification
+    ↓
+Trusted?
+   ↙   ↘
+ Yes    No
+  ↓      ↓
+Index   Reject
 ```
-                                  +---------------------------------------+
-                                  |         React 18 + Vite Frontend      |
-                                  |  (Web Speech API / Clinical CSS / UI) |
-                                  +-------------------+-------------------+
-                                                      |
-                                           REST API / JWT Bearer
-                                                      |
-                                                      v
-                                  +---------------------------------------+
-                                  |         FastAPI Application Server    |
-                                  |           (Python 3.10+ Backend)      |
-                                  +----+--------------------+--------+----+
-                                       |                    |        |
-             +-------------------------+                    |        +-----------------------+
-             v                                              v                                v
-+--------------------------+               +--------------------------+    +--------------------------+
-|      FastEmbed / BAAI     |               |      Pinecone Vector DB  |    |     Groq LLM Engine      |
-|    bge-small-en-v1.5     |               |  (Cosine Index / Chunks) |    | (LLaMA / GPT-OSS Models) |
-| (Dense 384d Embeddings)  |               +--------------------------+    +--------------------------+
-+--------------------------+                                |
-             |                                              |
-             +----------------------+-----------------------+
-                                    v
-                       +--------------------------+
-                       |      SQLite Store        |
-                       |  (Users, Chats, Library) |
-                       +--------------------------+
+
+SHA-256 document fingerprints are used as part of the trust-verification
+process.
+
+### 🧠 Agentic RAG
+
+The system uses agent-oriented routing to determine how a query should
+be handled.
+
+Possible routes include: - Vector retrieval - SQL/database operations -
+Web information retrieval - General LLM reasoning
+
+### 🔎 Semantic Vector Search
+
+Documents are extracted, chunked, embedded, and stored in a vector
+database.
+
+``` text
+User Question
+      ↓
+Query Embedding
+      ↓
+Semantic Similarity Search
+      ↓
+Relevant Document Chunks
+      ↓
+LLM
+      ↓
+Evidence-Grounded Answer
 ```
 
----
+### 📚 Document Library
 
-## Repository Structure
+Users can: - View uploaded documents - Open PDF documents - Access
+document information - Ask questions about documents
 
+### 📖 Integrated PDF Viewer
+
+Uploaded PDFs can be opened directly from the Library so users can
+inspect the original source.
+
+### 🖼️ Image Analysis
+
+The backend supports image input and image analysis.
+
+### 💬 Conversational Interface
+
+The frontend provides: - Chat conversations - Chat history - File
+attachments - PDF uploads - Image attachments - Voice input interface -
+Document-based questions
+
+### ☁️ Cloud Deployment
+
+The application is deployed on Render as: - React + Vite frontend →
+Render Static Site - FastAPI backend → Render Web Service - Pinecone →
+vector database - Groq → LLM inference
+
+## 🏗️ System Architecture
+
+``` text
+                         ┌───────────────────────┐
+                         │         USER          │
+                         └───────────┬───────────┘
+                                     │
+                                     ▼
+                         ┌───────────────────────┐
+                         │    React + Vite UI    │
+                         │       Frontend        │
+                         └───────────┬───────────┘
+                                     │
+                                  REST API
+                                     │
+                                     ▼
+                         ┌───────────────────────┐
+                         │       FastAPI         │
+                         │       Backend         │
+                         └───────────┬───────────┘
+                                     │
+              ┌──────────────────────┼──────────────────────┐
+              │                      │                      │
+              ▼                      ▼                      ▼
+       ┌─────────────┐        ┌─────────────┐        ┌─────────────┐
+       │    Auth     │        │    Agent    │        │ PDF / Image │
+       │    + JWT    │        │   Router    │        │ Processing   │
+       └─────────────┘        └──────┬──────┘        └─────────────┘
+                                     │
+                       ┌─────────────┼─────────────┐
+                       ▼             ▼             ▼
+                 ┌──────────┐  ┌──────────┐  ┌──────────┐
+                 │ Pinecone │  │ SQL / DB │  │ Web Tool │
+                 └────┬─────┘  └──────────┘  └──────────┘
+                      │
+                      ▼
+                 ┌──────────┐
+                 │ Groq LLM │
+                 └────┬─────┘
+                      │
+                      ▼
+                 ┌──────────────┐
+                 │ Final Answer │
+                 └──────────────┘
 ```
-DRUG_RAG/
+
+## 🔄 RAG Pipeline
+
+``` text
+Trusted Medication PDF
+        ↓
+Document Verification
+        ↓
+PDF Text Extraction
+        ↓
+Text Chunking
+        ↓
+Embedding Generation
+        ↓
+Pinecone Vector Database
+        ↓
+User Question
+        ↓
+Agentic Routing
+        ↓
+Semantic Retrieval
+        ↓
+Relevant Context
+        ↓
+Groq LLM
+        ↓
+Evidence-Grounded Response
+```
+
+## 🛠️ Technology Stack
+
+### Frontend
+
+-   React
+-   Vite
+-   JavaScript
+-   JSX
+-   CSS
+-   Lucide React
+
+### Backend
+
+-   Python
+-   FastAPI
+-   Uvicorn
+-   JWT Authentication
+
+### AI / RAG
+
+-   Retrieval-Augmented Generation (RAG)
+-   Agentic Routing
+-   FastEmbed
+-   BGE-small-en-v1.5 embeddings
+-   Groq LLM inference
+
+### Vector Database
+
+-   Pinecone Serverless
+
+### Database
+
+-   SQLite
+-   Authentication database
+-   Application data storage
+-   Conversation / memory storage
+
+### Document Processing
+
+-   PDF text extraction
+-   Text chunking
+-   Document verification
+-   SHA-256 document fingerprinting
+-   Image analysis
+
+### Development & Deployment
+
+-   VS Code
+-   Git
+-   GitHub
+-   REST APIs
+-   Swagger / OpenAPI
+-   Render
+
+## 📁 Project Structure
+
+``` text
+Drug-Assist-Agentic-RAG/
+│
 ├── backend/
 │   ├── database/
-│   │   └── database.py          # SQLite schema (users, chats, messages, documents)
-│   ├── uploads/
-│   │   ├── pdfs/                # Stored prescribing monographs
-│   │   └── images/              # Stored label & package images
-│   ├── auth.py                  # Bcrypt hashing & PyJWT token handling
-│   ├── embeddings.py            # FastEmbed embedding generator
-│   ├── main.py                  # FastAPI route controllers & middleware
-│   ├── pdf_processor.py         # Standardized section & chunk parser
-│   ├── pinecone_db.py           # Pinecone index upsert & namespace management
-│   ├── rag.py                   # Retrieval pipeline, prompt synthesis, citations
-│   └── requirements.txt         # Backend Python dependencies
+│   │   ├── auth_db.py
+│   │   ├── database.py
+│   │   └── memory_db.py
+│   ├── auth.py
+│   ├── console.py
+│   ├── debug_crohn.py
+│   ├── embeddings.py
+│   ├── image_analyzer.py
+│   ├── inspect_pages.py
+│   ├── main.py
+│   ├── pdf_processor.py
+│   ├── pinecone_db.py
+│   ├── rag.py
+│   ├── requirements.txt
+│   └── test_suite.py
+│
 ├── frontend/
 │   ├── public/
-│   │   └── favicon.svg          # Clinical vector mark
 │   ├── src/
+│   │   ├── assets/
 │   │   ├── components/
-│   │   │   ├── AuthPage.jsx            # Authentication form with password toggles
-│   │   │   ├── ChatInput.jsx           # Composer with audio waveform & file attach
-│   │   │   ├── ChatWindow.jsx          # Message list container
-│   │   │   ├── ConfirmationModal.jsx   # Accessible confirmation dialog
-│   │   │   ├── FAQAccordion.jsx        # Expandable reference FAQs
-│   │   │   ├── Library.jsx             # Indexed document manager
-│   │   │   ├── Message.jsx             # Answer renderer, citation chips, copy button
-│   │   │   ├── PrivacyPolicy.jsx       # Privacy modal
-│   │   │   ├── Sidebar.jsx             # Conversation history & document quick-access
-│   │   │   └── TermsAndConditions.jsx  # Clinical disclaimer & acceptable use
+│   │   │   ├── AttachmentMenu.jsx
+│   │   │   ├── AuthPage.jsx
+│   │   │   ├── ChatInput.jsx
+│   │   │   ├── ChatWindow.jsx
+│   │   │   ├── Composer.jsx
+│   │   │   ├── ConfirmationModal.jsx
+│   │   │   ├── FAQAccordion.jsx
+│   │   │   ├── FeatureCards.jsx
+│   │   │   ├── FeedbackModal.jsx
+│   │   │   ├── Library.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── Message.jsx
+│   │   │   ├── PrivacyPolicy.jsx
+│   │   │   ├── Register.jsx
+│   │   │   ├── Sidebar.jsx
+│   │   │   └── TermsAndConditions.jsx
 │   │   ├── services/
-│   │   │   └── api.js           # Client HTTP services & token injection
-│   │   ├── App.css              # Design system tokens, dark mode, print rules
-│   │   ├── app.jsx              # Application state coordinator
-│   │   └── main.jsx             # React entry point
+│   │   │   └── api.js
+│   │   ├── App.css
+│   │   ├── App.jsx
+│   │   └── main.jsx
 │   ├── index.html
 │   ├── package.json
+│   ├── package-lock.json
 │   └── vite.config.js
+│
+├── .gitignore
 └── README.md
 ```
 
----
+## ⚙️ Local Installation
 
-## Design System & Interface Standards
+### 1. Clone
 
-The frontend follows strict clinical design standards to prioritize legibility, fast scanning, and accessible contrast:
-
-- **Typography**: Inter / system font stack with strict mathematical type scales. Headings maintain proportional weight without decorative treatments.
-- **Palette**: Slate-driven neutral backgrounds (`#0f172a`, `#1e293b`, `#f8fafc`) paired with accessible clinical cyan and teal accents (`#0284c7`, `#0ea5e9`).
-- **Interactive Feedback**:
-  - Live pulsing red wave (`@keyframes voicePulse`) during microphone capture.
-  - One-click answer clipboard copy with transient checkmark validation.
-  - 3px responsive reading progress indicator tracking chat scroll depth.
-  - Print stylesheet (`@media print`) optimizing Q&A outputs for physical clinical records.
-- **No Vibe-Coded Gimmicks**: Free from arbitrary purple gradients, floating emoji reactions, decorative glowing cards, or ungrounded generative slop.
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- **Python**: 3.10 or higher
-- **Node.js**: 18.x or higher
-- **Pinecone Account**: API key and active index
-- **Groq Cloud Account**: API key for fast LLM inference and Whisper transcription
-
----
-
-### 1. Environment Configuration
-
-Create a `.env` file in the `backend/` directory:
-
-```env
-GROQ_API_KEY=your_groq_api_key_here
-PINECONE_API_KEY=your_pinecone_api_key_here
-PINECONE_INDEX_NAME=drug-information
-DRUGASSIST_JWT_SECRET=your_secure_random_secret_here
+``` bash
+git clone https://github.com/Deekshitha-Gajjala/Drug-Assist-Agentic-RAG.git
+cd Drug-Assist-Agentic-RAG
 ```
 
----
+### 2. Backend
 
-### 2. Backend Setup
-
-```bash
-# Navigate to backend directory
+``` bash
 cd backend
-
-# Create and activate a virtual environment
-python -m venv .venv
-
-# On Windows:
-.venv\Scripts\activate
-# On macOS/Linux:
-# source .venv/bin/activate
-
-# Install dependencies
+python -m venv venv
+venv\Scriptsctivate
 pip install -r requirements.txt
-
-# Launch FastAPI server (runs on http://127.0.0.1:8000)
-uvicorn main:app --port 8000 --host 127.0.0.1 --reload
 ```
 
----
+Create `backend/.env`:
 
-### 3. Frontend Setup
+``` env
+GROQ_API_KEY=your_groq_api_key
 
-```bash
-# Navigate to frontend directory
+PINECONE_API_KEY=your_pinecone_api_key
+PINECONE_INDEX_NAME=your_pinecone_index
+PINECONE_NAMESPACE=your_pinecone_namespace
+PINECONE_TOP_K=your_top_k
+PINECONE_BATCH_SIZE=your_batch_size
+
+DRUGASSIST_JWT_SECRET=your_jwt_secret
+
+GROQ_MODEL=your_groq_model
+GROQ_FALLBACK_MODEL=your_fallback_model
+```
+
+Run:
+
+``` bash
+uvicorn main:app --reload
+```
+
+Backend: `http://127.0.0.1:8000`
+
+Swagger: `http://127.0.0.1:8000/docs`
+
+### 3. Frontend
+
+Open another terminal:
+
+``` bash
 cd frontend
-
-# Install Node dependencies
 npm install
+```
 
-# Start Vite development server (runs on http://localhost:5173)
+Create `frontend/.env`:
+
+``` env
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+Run:
+
+``` bash
 npm run dev
 ```
 
----
+## ☁️ Render Deployment
 
-## Core API Endpoints
+### Backend --- Web Service
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/register` | Create user account with salted bcrypt password hash |
-| `POST` | `/login` | Authenticate user and issue JWT bearer token |
-| `POST` | `/chat` | Send question or attach document for grounded RAG query |
-| `POST` | `/voice-ask` | Submit audio recording for Groq Whisper transcription and RAG answer |
-| `POST` | `/upload-pdf` | Upload and chunk official manufacturer prescribing PDF into Pinecone |
-| `GET` | `/documents` | Retrieve catalog of user-indexed drug documents |
-| `DELETE` | `/documents/{id}` | Purge document record and delete Pinecone vector embeddings |
-| `GET` | `/chats` | List conversation threads |
-| `GET` | `/chats/{id}` | Fetch chat message history with evidence cards and citation tags |
-| `DELETE` | `/chats/{id}` | Delete conversation thread |
-| `GET` | `/health` | Service health status check |
+**Root Directory**
 
----
+``` text
+backend
+```
 
-## Regulatory & Clinical Disclaimer
+**Build Command**
 
-> **Notice**: DrugAssist is an experimental retrieval and reference software designed for educational, research, and informational lookups. It is **not** an FDA-approved medical device, diagnostic system, or software as a medical device (SaMD). It does not provide medical diagnoses or individualized patient treatment plans. Healthcare professionals must exercise independent clinical judgment and verify dosage recommendations against primary manufacturer package inserts.
+``` bash
+pip install -r requirements.txt
+```
+
+**Start Command**
+
+``` bash
+uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+Configure the backend secrets in Render Environment Variables.
+
+### Frontend --- Static Site
+
+**Root Directory**
+
+``` text
+frontend
+```
+
+**Build Command**
+
+``` bash
+npm install && npm run build
+```
+
+**Publish Directory**
+
+``` text
+dist
+```
+
+**Environment Variable**
+
+``` env
+VITE_API_URL=https://drug-assist-agentic-rag.onrender.com
+```
+
+## 🔐 Security
+
+Sensitive credentials are stored as environment variables and excluded
+from Git.
+
+The repository excludes:
+
+``` text
+.env
+backend/.env
+frontend/.env
+backend/venv/
+frontend/node_modules/
+frontend/dist/
+backend/uploads/
+*.db
+```
+
+Never commit API keys, JWT secrets, passwords, or other credentials to
+GitHub.
+
+### Document Trust
+
+DrugAssist does not assume every uploaded PDF is authoritative.
+
+``` text
+Uploaded Document
+       ↓
+Source Verification
+       ↓
+Fingerprint Verification
+       ↓
+Trusted?
+    /       YES      NO
+   ↓        ↓
+ Index    Reject
+```
+
+## 🧪 Example User Workflow
+
+``` text
+1. Register / Login
+        ↓
+2. Upload trusted medication PDF
+        ↓
+3. Document verification
+        ↓
+4. PDF processing
+        ↓
+5. Text chunking
+        ↓
+6. Embedding generation
+        ↓
+7. Store vectors in Pinecone
+        ↓
+8. Ask a question
+        ↓
+9. Agent determines appropriate route
+        ↓
+10. Retrieve relevant information
+        ↓
+11. Generate response using Groq
+        ↓
+12. Inspect the original PDF
+```
+
+## 💬 Example Questions
+
+``` text
+What is this medication used for?
+
+What are the major warnings?
+
+What are the contraindications?
+
+What are the common adverse reactions?
+
+What dosage information is provided?
+
+What monitoring information is mentioned?
+```
+
+## 📌 Why Agentic RAG?
+
+Traditional chatbot:
+
+``` text
+Question → LLM → Answer
+```
+
+DrugAssist:
+
+``` text
+Question
+   ↓
+Agentic Router
+   ↓
+Determine Required Source
+   ↓
+Retrieve Information
+   ↓
+LLM
+   ↓
+Evidence-Grounded Answer
+```
+
+This makes the application more modular and allows different information
+sources and tools to be incorporated into the workflow.
+
+## 📖 Evidence-First Design
+
+DrugAssist follows the principle:
+
+> **Retrieve relevant evidence before generating an answer.**
+
+Users can inspect the original document so that generated information
+can be checked against the source.
+
+This design is particularly important for medication-related
+information, where incorrect or unsupported information can have serious
+consequences.
+
+## 🚀 Future Enhancements
+
+-   Additional verified pharmaceutical sources
+-   Expanded document provenance tracking
+-   Advanced citation verification
+-   Multi-document comparison
+-   Multilingual medication information
+-   Improved conversational memory
+-   Advanced agent planning
+-   Cloud object storage for uploaded documents
+-   Production-grade database infrastructure
+-   Monitoring and observability
+-   Automated RAG evaluation
+-   Enhanced medical information extraction
+
+## 👥 Team Contributions
+
+  Area                  Responsibilities
+  --------------------- -----------------------------------------------
+  Frontend              React UI, components, chat interface, Library
+  Backend               FastAPI APIs and application logic
+  RAG                   Retrieval pipeline and context generation
+  Agentic AI            Query routing and tool selection
+  Vector Database       Pinecone indexing and retrieval
+  Authentication        Registration, login and JWT security
+  Document Processing   PDF extraction and verification
+  AI / Image Analysis   Image processing and analysis
+  Testing               API and application testing
+  Deployment            GitHub and Render cloud deployment
+
+## ⚠️ Medical Disclaimer
+
+**DrugAssist is an educational and information-retrieval software
+system.**
+
+It is **not a medical diagnosis system, treatment recommendation system,
+or substitute for professional medical advice**.
+
+Information obtained through DrugAssist should be verified against
+current official prescribing information and appropriate healthcare
+professionals.
+
+Users should not make medication, dosage, treatment, or other clinical
+decisions solely based on an AI-generated response.
+
+## 🎓 Project Purpose
+
+DrugAssist demonstrates the integration of:
+
+-   Generative AI
+-   Retrieval-Augmented Generation
+-   Agentic AI workflows
+-   Vector databases
+-   Semantic search
+-   Document processing
+-   Document provenance and trust verification
+-   Authentication
+-   REST APIs
+-   React frontend development
+-   Cloud deployment
+
+The project focuses on building a reliable and source-aware AI
+application rather than a simple LLM chatbot.
+
+## ⭐ Project Highlights
+
+``` text
+✓ Agentic RAG Architecture
+✓ Trusted Medication Document Verification
+✓ Document Provenance & Fingerprinting
+✓ Semantic Vector Search
+✓ Pinecone Vector Database
+✓ Groq LLM Inference
+✓ FastAPI Backend
+✓ React + Vite Frontend
+✓ JWT Authentication
+✓ PDF Upload
+✓ PDF Viewer
+✓ Document Library
+✓ Image Analysis
+✓ Conversational Interface
+✓ SQL / Database Integration
+✓ Web Retrieval Capability
+✓ REST APIs
+✓ Swagger / OpenAPI Documentation
+✓ GitHub Version Control
+✓ Render Cloud Deployment
+```
+
+## 📜 License
+
+This project is intended for educational and research purposes.
+
+A suitable open-source license can be added if the project is intended
+to be distributed publicly under specific licensing terms.
+
+------------------------------------------------------------------------
+
+### Built with
+
+**React • Vite • FastAPI • Python • Agentic RAG • Pinecone • FastEmbed •
+Groq • SQLite • JWT • Render • GitHub**
 

@@ -17,6 +17,7 @@ import shutil
 import uuid
 import traceback
 import json
+import hashlib
 
 from fastapi import (
     FastAPI,
@@ -29,7 +30,6 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
 from starlette.concurrency import run_in_threadpool
-from pdf_authenticator import authenticate_pdf_document
 
 from console import (
     render_backend_console,
@@ -55,7 +55,6 @@ from rag import (
 from pinecone_db import index_pdf
 
 from database.database import (
-    get_connection,
     init_database,
     create_user,
     get_user_by_email,
@@ -99,13 +98,17 @@ app = FastAPI(
 # CORS
 # ============================================================
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "https://drug-assist-agentic-rag-1.onrender.com",
     ],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.onrender\.com",
     allow_credentials=True,
@@ -151,6 +154,46 @@ os.makedirs(
     IMAGE_FOLDER,
     exist_ok=True,
 )
+
+
+# ============================================================
+# TRUSTED MEDICAL PDF REGISTRY
+# ============================================================
+
+TRUSTED_PDF_REGISTRY = {
+    "9f0524388a03e816a19d05845b3a4dce5d6e8b8ba54755480bc1d8ddf2f9d300": {
+        "name": "Official RINVOQ Prescribing Information (AbbVie/FDA labeling)",
+        "source": "AbbVie/FDA labeling",
+        "official_url": "https://www.rxabbvie.com/pdf/rinvoq_pi.pdf",
+    },
+}
+
+
+def verify_trusted_pdf(file_path):
+    """Allow a PDF into the medical RAG only when its exact hash is approved."""
+    sha256 = hashlib.sha256()
+
+    with open(file_path, "rb") as pdf_file:
+        for chunk in iter(lambda: pdf_file.read(1024 * 1024), b""):
+            sha256.update(chunk)
+
+    file_hash = sha256.hexdigest()
+    trusted_source = TRUSTED_PDF_REGISTRY.get(file_hash)
+
+    if not trusted_source:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "PDF rejected. This document is not a verified trusted medical source. "
+                "Only approved official medical documents can be added to DrugAssist."
+            ),
+        )
+
+    return {
+        "trusted": True,
+        "sha256": file_hash,
+        **trusted_source,
+    }
 
 
 # ============================================================
@@ -779,7 +822,56 @@ def documents(
         "documents": user_documents,
     }
 
+@app.get("/documents/{document_id}/pdf")
+def get_document_pdf(
+    document_id: int,
+    user=Depends(get_current_user),
+):
 
+    document = get_document(
+        document_id,
+        user["id"],
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found.",
+        )
+
+    if str(document.get("file_type", "")).lower() != "pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="Document is not a PDF.",
+        )
+
+    file_path = os.path.realpath(
+        document.get("file_path", "")
+    )
+
+    pdf_root = os.path.realpath(
+        PDF_FOLDER
+    )
+
+    if os.path.commonpath(
+        [file_path, pdf_root]
+    ) != pdf_root:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid document path.",
+        )
+
+    if not os.path.isfile(file_path):
+        raise HTTPException(
+            status_code=404,
+            detail="PDF file not found.",
+        )
+
+    return FileResponse(
+        file_path,
+        media_type="application/pdf",
+        filename=document.get("filename") or os.path.basename(file_path),
+    )
 # ============================================================
 # LIBRARY - DELETE DOCUMENT
 # ============================================================
@@ -806,99 +898,6 @@ def remove_document(
         "success": True,
         "message": "Document removed from library.",
     }
-
-
-# ============================================================
-# LIBRARY - VIEW / SERVE PDF DOCUMENT
-# ============================================================
-
-@app.get("/documents/{document_identifier}/pdf")
-@app.get("/documents/{document_identifier}/view")
-def view_document_pdf(
-    document_identifier: str,
-    page: Optional[int] = None,
-):
-    """
-    Streams the requested PDF file inline so browser and iframes
-    can render it natively, jumping directly to #page=N.
-    """
-    file_path = None
-    original_filename = None
-
-    # 1. Search in database
-    connection = get_connection()
-    cursor = connection.cursor()
-    try:
-        if document_identifier.isdigit():
-            cursor.execute(
-                "SELECT file_path, filename FROM documents WHERE id = ?",
-                (int(document_identifier),)
-            )
-            row = cursor.fetchone()
-            if row:
-                file_path = row["file_path"]
-                original_filename = row["filename"]
-
-        if not file_path:
-            cursor.execute(
-                """
-                SELECT file_path, filename FROM documents
-                WHERE document_id = ? OR document_key = ? OR stored_filename = ? OR filename = ?
-                ORDER BY id DESC
-                """,
-                (document_identifier, document_identifier, document_identifier, document_identifier)
-            )
-            row = cursor.fetchone()
-            if row:
-                file_path = row["file_path"]
-                original_filename = row["filename"]
-    except Exception as db_err:
-        print("DB lookup warning in view_document_pdf:", db_err)
-    finally:
-        connection.close()
-
-    # 2. Check filesystem if DB path was missing or outdated
-    if not file_path or not os.path.exists(file_path):
-        clean_name = os.path.basename(document_identifier)
-        for check_dir in [PDF_FOLDER, UPLOAD_FOLDER]:
-            if not os.path.isdir(check_dir):
-                continue
-            direct_candidate = os.path.join(check_dir, clean_name)
-            if os.path.isfile(direct_candidate):
-                file_path = direct_candidate
-                break
-            # Match by suffix or substring
-            for f in os.listdir(check_dir):
-                if f.lower().endswith(".pdf") and (clean_name.lower() in f.lower() or f.lower().endswith(clean_name.lower())):
-                    file_path = os.path.join(check_dir, f)
-                    break
-            if file_path and os.path.exists(file_path):
-                break
-
-    # 3. Fallback to default drug.pdf
-    if not file_path or not os.path.exists(file_path):
-        default_file = os.path.join(UPLOAD_FOLDER, "drug.pdf")
-        if os.path.isfile(default_file):
-            file_path = default_file
-
-    if not file_path or not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=404,
-            detail=f"PDF document '{document_identifier}' not found."
-        )
-
-    download_name = original_filename or os.path.basename(file_path)
-
-    return FileResponse(
-        path=file_path,
-        media_type="application/pdf",
-        filename=download_name,
-        headers={
-            "Content-Disposition": f'inline; filename="{download_name}"',
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Expose-Headers": "Content-Disposition",
-        }
-    )
 
 
 # ============================================================
@@ -1223,24 +1222,10 @@ async def upload_pdf(
         )
 
         # ----------------------------------------------------
-        # AUTHENTICATE PDF (Trusted Source & Adversarial Checks)
+        # VERIFY TRUSTED MEDICAL SOURCE
         # ----------------------------------------------------
-        auth_result = authenticate_pdf_document(
-            file_path,
-            original_filename=original_filename,
-        )
 
-        if not auth_result.get("is_authentic"):
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except Exception:
-                    pass
-
-            raise HTTPException(
-                status_code=400,
-                detail=auth_result.get("detail", "PDF upload failed. Authentication failed."),
-            )
+        verify_trusted_pdf(file_path)
 
         # ----------------------------------------------------
         # INDEX PDF
@@ -1300,8 +1285,6 @@ async def upload_pdf(
             ),
         }
 
-    except HTTPException:
-        raise
     except Exception as error:
 
         print()
@@ -1690,40 +1673,10 @@ async def chat(
                     )
 
                     # ------------------------------------------
-                    # AUTHENTICATE PDF
+                    # VERIFY TRUSTED MEDICAL SOURCE
                     # ------------------------------------------
-                    auth_result = authenticate_pdf_document(
-                        file_path,
-                        original_filename=filename,
-                    )
 
-                    if not auth_result.get("is_authentic"):
-                        if os.path.exists(file_path):
-                            try:
-                                os.remove(file_path)
-                            except Exception:
-                                pass
-
-                        error_msg = auth_result.get(
-                            "detail",
-                            "PDF upload failed.\n\nThis PDF contains suspicious instruction-like content and cannot be used as a DrugAssist evidence."
-                        )
-
-                        add_message(
-                            chat_id=current_chat_id,
-                            role="assistant",
-                            content=error_msg,
-                            sources_json="[]",
-                        )
-
-                        return {
-                            "success": False,
-                            "chat_id": current_chat_id,
-                            "question": question or f"Uploading {filename}...",
-                            "answer": error_msg,
-                            "sources": [],
-                            "error": error_msg,
-                        }
+                    verify_trusted_pdf(file_path)
 
                     # ------------------------------------------
                     # INDEX PDF
@@ -2215,6 +2168,10 @@ async def chat(
             "sources",
             [],
         )
+
+        if document_id is not None:
+            for source_item in sources:
+                source_item["database_document_id"] = document_id
 
         videos = result.get(
             "videos",
