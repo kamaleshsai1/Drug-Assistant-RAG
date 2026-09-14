@@ -1,7 +1,7 @@
 import os
 import sys
 
-# Ensure backend directory is in python path regardless of working directory
+# Ensure backend directory is in python path for Antigravity IDE
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Limit internal math/ONNX thread pools for low memory footprint on Render

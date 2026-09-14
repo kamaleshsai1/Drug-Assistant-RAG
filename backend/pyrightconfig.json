@@ -1,0 +1,13 @@
+{
+  "extraPaths": [
+    ".",
+    "./database",
+    "C:/Users/shesh/AppData/Local/Programs/Python/Python310/Lib/site-packages",
+    "D:/AntigravityProjects/DRUG_RAG/.venv/Lib/site-packages"
+  ],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "reportUndefinedVariable": "none",
+  "pythonVersion": "3.10",
+  "pythonPlatform": "Windows"
+}
