@@ -108,6 +108,7 @@ app.add_middleware(
         "http://127.0.0.1:5174",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "https://drugassist-frontend.onrender.com",
         "https://drug-assist-agentic-rag-1.onrender.com",
     ],
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.onrender\.com",

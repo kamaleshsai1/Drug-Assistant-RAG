@@ -5,7 +5,7 @@
 > verified pharmaceutical documentation, and large language models.
 
 [![Live
-Demo](https://img.shields.io/badge/Live-Demo-success)](https://drug-assist-agentic-rag-1.onrender.com)
+Demo](https://img.shields.io/badge/Live-Demo-success)](https://drugassist-frontend.onrender.com)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI-009688)](https://drug-assist-agentic-rag.onrender.com)
 [![API
 Docs](https://img.shields.io/badge/API-Swagger-85EA2D)](https://drug-assist-agentic-rag.onrender.com/docs)
@@ -16,7 +16,7 @@ DB](https://img.shields.io/badge/Vector%20DB-Pinecone-000000)](https://www.pinec
 
 ## 🌐 Live Application
 
--   **Frontend:** https://drug-assist-agentic-rag-1.onrender.com
+-   **Frontend:** https://drugassist-frontend.onrender.com
 -   **Backend API:** https://drug-assist-agentic-rag.onrender.com
 -   **Swagger / OpenAPI:**
     https://drug-assist-agentic-rag.onrender.com/docs

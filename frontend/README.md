@@ -1,16 +1,44 @@
-# React + Vite
+# DrugAssist — Frontend Web Application
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The interactive, evidence-first web interface for the **DrugAssist Agentic RAG** system. Built with React 18, Vite, and Lucide Icons.
 
-Currently, two official plugins are available:
+## 🌐 Live Application
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Production Frontend:** https://drugassist-frontend.onrender.com
+- **Production Backend API:** https://drug-assist-agentic-rag.onrender.com
+- **API Documentation (Swagger):** https://drug-assist-agentic-rag.onrender.com/docs
 
-## React Compiler
+## 🚀 Quick Start (Local Development)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 1. Install Dependencies
+```bash
+npm install
+```
 
-## Expanding the Oxlint configuration
+### 2. Configure Environment (Optional)
+By default, the frontend connects to `http://localhost:8000`. To point to a custom backend URL, create a `.env` file in the `frontend/` directory:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```env
+VITE_API_URL=http://localhost:8000
+```
+
+### 3. Run Development Server
+```bash
+npm run dev
+```
+
+The frontend will start at `http://localhost:5173`.
+
+### 4. Build for Production
+```bash
+npm run build
+```
+The compiled static assets will be output to `frontend/dist/`.
+
+## 📦 Features Included
+
+- **User Authentication:** Login, Registration, and persistent JWT session management.
+- **Agentic Chat Interface:** Multi-turn conversational Q&A with evidence citation badges and reasoning breakdown.
+- **Prescribing Document Uploader:** Drag-and-drop PDF ingestion with verified medical source checks.
+- **Document Library & In-Browser PDF Viewer:** Real-time page preview with zoom and full-text browsing.
+- **Image Analysis & Voice Queries:** Multi-modal support with Groq Whisper audio transcription and clinical image inspection.
