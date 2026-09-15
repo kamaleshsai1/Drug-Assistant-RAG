@@ -49,7 +49,6 @@ from pydantic import BaseModel, EmailStr
 
 from rag import (
     answer_question,
-    analyze_uploaded_image,
 )
 
 from pinecone_db import index_pdf
@@ -136,11 +135,6 @@ PDF_FOLDER = os.path.join(
     "pdfs",
 )
 
-IMAGE_FOLDER = os.path.join(
-    UPLOAD_FOLDER,
-    "images",
-)
-
 os.makedirs(
     UPLOAD_FOLDER,
     exist_ok=True,
@@ -148,11 +142,6 @@ os.makedirs(
 
 os.makedirs(
     PDF_FOLDER,
-    exist_ok=True,
-)
-
-os.makedirs(
-    IMAGE_FOLDER,
     exist_ok=True,
 )
 
@@ -289,23 +278,6 @@ def verify_trusted_pdf(file_path):
 
 
 # ============================================================
-# ALLOWED IMAGE TYPES
-# ============================================================
-
-ALLOWED_IMAGE_EXTENSIONS = {
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".webp",
-    ".bmp",
-    ".gif",
-    ".tif",
-    ".tiff",
-    ".jfif",
-}
-
-
-# ============================================================
 # STARTUP
 # ============================================================
 
@@ -324,7 +296,6 @@ def startup_event():
     print("Authentication enabled.")
     print("RAG engine loaded.")
     print("PDF upload enabled.")
-    print("Image analysis enabled.")
     print("=" * 70)
 
 # ============================================================
@@ -1187,70 +1158,7 @@ def save_pdf_document(
     )
 
 
-# ============================================================
-# SAVE IMAGE DOCUMENT
-# ============================================================
 
-def save_image_document(
-    user_id,
-    filename,
-    file_path,
-    stored_filename,
-):
-
-    # --------------------------------------------------------
-    # New database schema
-    # --------------------------------------------------------
-
-    try:
-
-        return create_document(
-            user_id=user_id,
-            filename=filename,
-            stored_filename=stored_filename,
-            file_path=file_path,
-            file_type="image",
-            drug=None,
-            source="Uploaded Image",
-            document_id=str(
-                uuid.uuid4()
-            ),
-            pages=1,
-            chunks=0,
-        )
-
-    except TypeError:
-
-        pass
-
-    # --------------------------------------------------------
-    # Older database compatibility
-    # --------------------------------------------------------
-
-    try:
-
-        return create_document(
-            user_id=user_id,
-            filename=filename,
-            drug=None,
-            source="Uploaded Image",
-            document_id=str(
-                uuid.uuid4()
-            ),
-            pages=1,
-            chunks=0,
-        )
-
-    except TypeError:
-
-        pass
-
-    return create_document(
-        user_id,
-        filename,
-        stored_filename,
-        file_path,
-    )
 
 
 # ============================================================
@@ -1434,115 +1342,7 @@ async def upload_pdf(
         await file.close()
 
 
-# ============================================================
-# IMAGE VALIDATION
-# ============================================================
 
-def validate_image_file(
-    filename,
-    content_type,
-):
-
-    extension = os.path.splitext(
-        filename
-    )[1].lower()
-
-    if extension in ALLOWED_IMAGE_EXTENSIONS:
-
-        return True
-
-    if (
-        content_type
-        and content_type.lower().startswith(
-            "image/"
-        )
-    ):
-
-        return True
-
-    return False
-
-
-# ============================================================
-# CONVERSATION IMAGE MEMORY
-# ============================================================
-
-def get_previous_image_context(
-    messages,
-):
-
-    if not messages:
-
-        return ""
-
-    image_seen = False
-
-    for message in reversed(
-        messages
-    ):
-
-        role = message.get(
-            "role",
-            "",
-        )
-
-        content = str(
-            message.get(
-                "content",
-                "",
-            )
-        )
-
-        if role == "user":
-
-            lower_content = content.lower()
-
-            attachment_marker = (
-                "attachments:"
-            )
-
-            if attachment_marker in lower_content:
-
-                attachment_part = (
-                    lower_content.split(
-                        attachment_marker,
-                        1,
-                    )[1]
-                )
-
-                if any(
-                    attachment_part.endswith(
-                        ext
-                    )
-                    or f"{ext}," in attachment_part
-                    or f"{ext} " in attachment_part
-                    for ext in ALLOWED_IMAGE_EXTENSIONS
-                ):
-
-                    image_seen = True
-                    continue
-
-                # A later PDF attachment means the
-                # previous image is no longer active.
-
-                if ".pdf" in attachment_part:
-
-                    return ""
-
-        elif (
-            role == "assistant"
-            and image_seen
-        ):
-
-            if content.strip():
-
-                return (
-                    "Previous image analysis "
-                    "from this conversation:\n"
-                    + content.strip()
-                )
-
-    return ""
 
 
 
@@ -1718,7 +1518,7 @@ async def chat(
 
     processed_files = []
 
-    image_contexts = []
+
 
     if files:
 
@@ -1894,132 +1694,6 @@ async def chat(
                     await uploaded_file.close()
 
             # ==================================================
-            # IMAGE
-            # ==================================================
-
-            elif validate_image_file(
-                filename,
-                uploaded_file.content_type,
-            ):
-
-                stored_filename = (
-                    str(uuid.uuid4())
-                    + "_"
-                    + filename
-                )
-
-                file_path = os.path.join(
-                    IMAGE_FOLDER,
-                    stored_filename,
-                )
-
-                try:
-
-                    print()
-                    print("=" * 70)
-                    print("CHAT IMAGE ATTACHMENT")
-                    print("=" * 70)
-                    print(
-                        "USER:",
-                        user["email"],
-                    )
-                    print(
-                        "FILENAME:",
-                        filename,
-                    )
-                    print(
-                        "CHAT ID:",
-                        current_chat_id,
-                    )
-
-                    # ------------------------------------------
-                    # SAVE IMAGE
-                    # ------------------------------------------
-
-                    with open(
-                        file_path,
-                        "wb",
-                    ) as buffer:
-
-                        shutil.copyfileobj(
-                            uploaded_file.file,
-                            buffer,
-                        )
-
-                    # ------------------------------------------
-                    # ANALYZE IMAGE
-                    # ------------------------------------------
-
-                    image_observation = (
-                        analyze_uploaded_image(
-                            file_path,
-                            question=question,
-                        )
-                    )
-
-                    if image_observation:
-
-                        image_contexts.append(
-                            image_observation
-                        )
-
-                    # ------------------------------------------
-                    # SAVE IMAGE TO LIBRARY
-                    # ------------------------------------------
-
-                    document_id = save_image_document(
-                        user_id,
-                        filename,
-                        file_path,
-                        stored_filename,
-                    )
-
-                    processed_files.append(
-                        {
-                            "filename": filename,
-                            "type": "image",
-                            "status": (
-                                "analyzed"
-                                if image_observation
-                                else "analysis_failed"
-                            ),
-                            "document_id": document_id,
-                            "analysis": (
-                                image_observation
-                                or ""
-                            ),
-                        }
-                    )
-
-                    print(
-                        "Image analysis completed."
-                    )
-                    print("=" * 70)
-
-                except Exception as error:
-
-                    print()
-                    print(
-                        "CHAT IMAGE ERROR:",
-                        repr(error),
-                    )
-
-                    traceback.print_exc()
-
-                    processed_files.append(
-                        {
-                            "filename": filename,
-                            "type": "image",
-                            "status": "analysis_failed",
-                            "error": str(error),
-                        }
-                    )
-
-                finally:
-
-                    await uploaded_file.close()
-
-            # ==================================================
             # UNSUPPORTED
             # ==================================================
 
@@ -2031,52 +1705,9 @@ async def chat(
                     status_code=400,
                     detail=(
                         f"Unsupported file type: "
-                        f"{filename}"
+                        f"{filename}. Only PDF documents are supported."
                     ),
                 )
-
-    # ========================================================
-    # COMBINE IMAGE OBSERVATIONS
-    # ========================================================
-
-    combined_image_context = ""
-
-    if image_contexts:
-
-        combined_image_context = (
-            "\n\n".join(
-                image_contexts
-            )
-        )
-
-    # ========================================================
-    # GET EXISTING MESSAGES
-    # ========================================================
-
-    previous_messages = get_messages(
-        current_chat_id
-    )
-
-
-    # ========================================================
-    # RECOVER PREVIOUS IMAGE
-    # ========================================================
-
-    previous_image_context = ""
-
-    if not combined_image_context:
-
-        previous_image_context = (
-            get_previous_image_context(
-                previous_messages
-            )
-        )
-
-    effective_image_context = (
-        combined_image_context
-        if combined_image_context
-        else previous_image_context
-    )
 
     # ========================================================
     # SAVE USER MESSAGE
@@ -2126,20 +1757,10 @@ async def chat(
 
     if not question:
 
-        if image_contexts:
-
-            answer = (
-                "I analyzed the uploaded image. "
-                "Please ask a question about the "
-                "information shown in the image."
-            )
-
-        else:
-
-            answer = (
-                "Your file has been received. "
-                "Please ask a question about it."
-            )
+        answer = (
+            "Your document has been received and indexed. "
+            "Please ask a question about it."
+        )
 
         add_message(
             chat_id=current_chat_id,
@@ -2208,17 +1829,7 @@ async def chat(
             len(previous_messages),
         )
 
-        if effective_image_context:
 
-            print(
-                "IMAGE CONTEXT AVAILABLE: YES"
-            )
-
-        else:
-
-            print(
-                "IMAGE CONTEXT AVAILABLE: NO"
-            )
 
         print("=" * 70)
 
@@ -2258,7 +1869,6 @@ async def chat(
         result = await run_in_threadpool(
             answer_question,
             question,
-            image_context=effective_image_context,
             conversation_history=conversation_history,
             memories=long_term_memories,
             user_id=user_id,

@@ -18,7 +18,6 @@ from datetime import datetime, timezone
 #   6. Feedback
 #   7. Long-term user memory
 #   8. Conversation search
-#   9. Previous image context
 #
 # IMPORTANT:
 # This file stores memory.
@@ -3662,97 +3661,7 @@ def save_pdf_document(
     )
 
 
-# ============================================================
-# IMAGE DOCUMENT HELPER
-# ============================================================
 
-def save_image_document(
-    user_id,
-    filename,
-    file_path,
-    stored_filename
-):
-
-    file_size = 0
-
-    if (
-        file_path
-        and os.path.exists(file_path)
-    ):
-
-        try:
-
-            file_size = os.path.getsize(
-                file_path
-            )
-
-        except Exception:
-
-            file_size = 0
-
-    return create_document(
-        user_id=user_id,
-        filename=filename,
-        stored_filename=stored_filename,
-        file_path=file_path,
-        file_type="image",
-        file_size=file_size
-    )
-
-
-# ============================================================
-# PREVIOUS IMAGE CONTEXT
-# ============================================================
-
-def get_previous_image_context(
-    messages
-):
-
-    if not messages:
-        return ""
-
-    for message in reversed(
-        messages
-    ):
-
-        if not isinstance(
-            message,
-            dict
-        ):
-            continue
-
-        image_analysis = message.get(
-            "image_analysis"
-        )
-
-        if image_analysis:
-
-            if isinstance(
-                image_analysis,
-                str
-            ):
-
-                return image_analysis
-
-            if isinstance(
-                image_analysis,
-                (dict, list)
-            ):
-
-                try:
-
-                    return json.dumps(
-                        image_analysis,
-                        ensure_ascii=False
-                    )
-
-                except Exception:
-
-                    return str(
-                        image_analysis
-                    )
-
-    return ""
 
 
 # ============================================================

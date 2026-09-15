@@ -11,9 +11,9 @@ function FeatureCards({ onFeatureSelect }) {
       description: "Ask questions about uploaded documents",
     },
     {
-      id: "ocr",
-      title: "Image Analysis",
-      description: "Analyze medicine or document images",
+      id: "safety",
+      title: "Safety & Warnings",
+      description: "Review contraindications and boxed warnings",
     },
   ];
 

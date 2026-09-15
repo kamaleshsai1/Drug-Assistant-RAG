@@ -1,15 +1,9 @@
 import {
-  useEffect,
-  useRef,
-  useState
+  useRef
 } from "react";
-
-import { createPortal } from "react-dom";
 
 import {
   Plus,
-  Paperclip,
-  Image as ImageIcon,
   Mic,
   ArrowUp,
   X,
@@ -23,9 +17,6 @@ function ChatInput({
   onSend,
   onVoice,
   onFileUpload,
-  pendingImage,
-  pendingImagePreview,
-  onRemoveImage,
   loading,
   selectedDocumentName,
   onChangeDocument,
@@ -40,233 +31,9 @@ function ChatInput({
 
   const pdfInputRef = useRef(null);
 
-  const imageInputRef = useRef(null);
-
   const textareaRef = useRef(null);
 
   const attachButtonRef = useRef(null);
-
-  const menuRef = useRef(null);
-
-
-  // ============================================================
-  // STATE
-  // ============================================================
-
-  const [
-    attachmentMenuOpen,
-    setAttachmentMenuOpen
-  ] = useState(false);
-
-  const [
-    menuPosition,
-    setMenuPosition
-  ] = useState({
-    left: 20,
-    bottom: 100
-  });
-
-
-  // ============================================================
-  // UPDATE MENU POSITION
-  // ============================================================
-
-  const updateMenuPosition = () => {
-
-    const button =
-      attachButtonRef.current;
-
-    if (!button) {
-      return;
-    }
-
-    const rect =
-      button.getBoundingClientRect();
-
-    const menuWidth = 190;
-
-    const viewportPadding = 12;
-
-    let left = rect.left;
-
-    if (
-      left + menuWidth >
-      window.innerWidth - viewportPadding
-    ) {
-
-      left =
-        window.innerWidth -
-        menuWidth -
-        viewportPadding;
-
-    }
-
-    if (left < viewportPadding) {
-      left = viewportPadding;
-    }
-
-    const bottom =
-      window.innerHeight -
-      rect.top +
-      8;
-
-    setMenuPosition({
-      left,
-      bottom
-    });
-  };
-
-
-  // ============================================================
-  // OPEN / CLOSE MENU
-  // ============================================================
-
-  const toggleAttachmentMenu = () => {
-
-    if (loading) {
-      return;
-    }
-
-    setAttachmentMenuOpen(
-      (previous) => !previous
-    );
-
-  };
-
-
-  // ============================================================
-  // POSITION MENU WHEN OPEN
-  // ============================================================
-
-  useEffect(() => {
-
-    if (!attachmentMenuOpen) {
-      return;
-    }
-
-    updateMenuPosition();
-
-    const handleResize = () => {
-      updateMenuPosition();
-    };
-
-    const handleScroll = () => {
-      updateMenuPosition();
-    };
-
-    window.addEventListener(
-      "resize",
-      handleResize
-    );
-
-    window.addEventListener(
-      "scroll",
-      handleScroll,
-      true
-    );
-
-    return () => {
-
-      window.removeEventListener(
-        "resize",
-        handleResize
-      );
-
-      window.removeEventListener(
-        "scroll",
-        handleScroll,
-        true
-      );
-
-    };
-
-  }, [attachmentMenuOpen]);
-
-
-  // ============================================================
-  // CLOSE MENU ON OUTSIDE CLICK
-  // ============================================================
-
-  useEffect(() => {
-
-    if (!attachmentMenuOpen) {
-      return;
-    }
-
-    const handleOutsideClick = (event) => {
-
-      const menu =
-        menuRef.current;
-
-      const button =
-        attachButtonRef.current;
-
-      if (
-        menu &&
-        menu.contains(event.target)
-      ) {
-        return;
-      }
-
-      if (
-        button &&
-        button.contains(event.target)
-      ) {
-        return;
-      }
-
-      setAttachmentMenuOpen(false);
-    };
-
-
-    const handleEscape = (event) => {
-
-      if (event.key === "Escape") {
-        setAttachmentMenuOpen(false);
-      }
-
-    };
-
-
-    document.addEventListener(
-      "mousedown",
-      handleOutsideClick
-    );
-
-    document.addEventListener(
-      "keydown",
-      handleEscape
-    );
-
-
-    return () => {
-
-      document.removeEventListener(
-        "mousedown",
-        handleOutsideClick
-      );
-
-      document.removeEventListener(
-        "keydown",
-        handleEscape
-      );
-
-    };
-
-  }, [attachmentMenuOpen]);
-
-
-  // ============================================================
-  // CLOSE MENU WHILE LOADING
-  // ============================================================
-
-  useEffect(() => {
-
-    if (loading) {
-      setAttachmentMenuOpen(false);
-    }
-
-  }, [loading]);
 
 
   // ============================================================
@@ -309,118 +76,7 @@ function ChatInput({
 
     event.target.value = "";
 
-    setAttachmentMenuOpen(false);
-
   };
-
-
-  // ============================================================
-  // IMAGE SELECTION
-  // ============================================================
-
-  const handleImageChange = (event) => {
-
-    const file =
-      event.target.files?.[0];
-
-    if (file) {
-
-      onFileUpload(
-        file,
-        true
-      );
-
-      requestAnimationFrame(() => {
-
-        textareaRef.current?.focus();
-
-      });
-
-    }
-
-    event.target.value = "";
-
-    setAttachmentMenuOpen(false);
-
-  };
-
-
-  // ============================================================
-  // ATTACHMENT MENU
-  // ============================================================
-
-  const attachmentMenu = attachmentMenuOpen
-    ? createPortal(
-
-        <div
-          ref={menuRef}
-          className="drugassist-attachment-menu"
-          style={{
-            position: "fixed",
-            left: `${menuPosition.left}px`,
-            bottom: `${menuPosition.bottom}px`
-          }}
-        >
-
-          <button
-            type="button"
-            onClick={() => {
-
-              setAttachmentMenuOpen(false);
-
-              setTimeout(() => {
-
-                pdfInputRef.current?.click();
-
-              }, 0);
-
-            }}
-          >
-
-            <Paperclip
-              size={18}
-              strokeWidth={1.9}
-            />
-
-            <span>
-              Attach PDF
-            </span>
-
-          </button>
-
-
-          <button
-            type="button"
-            onClick={() => {
-
-              setAttachmentMenuOpen(false);
-
-              setTimeout(() => {
-
-                imageInputRef.current?.click();
-
-              }, 0);
-
-            }}
-          >
-
-            <ImageIcon
-              size={18}
-              strokeWidth={1.9}
-            />
-
-            <span>
-              Add image
-            </span>
-
-          </button>
-
-        </div>,
-
-        document.body
-
-      )
-    : null;
 
 
   // ============================================================
@@ -940,19 +596,7 @@ function ChatInput({
         />
 
 
-        {/* ======================================================
-            HIDDEN IMAGE INPUT
-        ====================================================== */}
 
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleImageChange}
-          style={{
-            display: "none"
-          }}
-        />
 
 
         {/* ======================================================
@@ -1011,61 +655,7 @@ function ChatInput({
           )}
 
 
-          {/* ====================================================
-              PENDING IMAGE
-          ==================================================== */}
 
-          {pendingImage && (
-
-            <div className="composer-attachment">
-
-              <div className="composer-attachment-preview">
-
-                {pendingImagePreview ? (
-
-                  <img
-                    src={pendingImagePreview}
-                    alt="Selected image"
-                  />
-
-                ) : (
-
-                  <ImageIcon size={22} />
-
-                )}
-
-              </div>
-
-
-              <div className="composer-attachment-info">
-
-                <strong>
-                  {pendingImage.name}
-                </strong>
-
-                <span>
-                  Type your question below, then press Send.
-                </span>
-
-              </div>
-
-
-              <button
-                type="button"
-                className="composer-remove"
-                onClick={onRemoveImage}
-                disabled={loading}
-                title="Remove image"
-                aria-label="Remove image"
-              >
-
-                <X size={18} />
-
-              </button>
-
-            </div>
-
-          )}
 
 
           {/* ====================================================
@@ -1101,13 +691,10 @@ function ChatInput({
               ref={attachButtonRef}
               type="button"
               className="composer-icon-button"
-              onClick={toggleAttachmentMenu}
+              onClick={() => pdfInputRef.current?.click()}
               disabled={loading}
-              title="Attach PDF or image"
-              aria-label="Attach PDF or image"
-              aria-expanded={
-                attachmentMenuOpen
-              }
+              title="Attach Medication PDF"
+              aria-label="Attach Medication PDF"
             >
 
               <span className="composer-plus-icon">
@@ -1193,19 +780,11 @@ function ChatInput({
         ====================================================== */}
 
         <div className="composer-hint">
-          DrugAssist can search the web, read documents,
-          analyze images and more.
+          DrugAssist can search the web, index prescribing documents,
+          verify dosages, and summarize warnings.
         </div>
 
       </div>
-
-
-      {/* ========================================================
-          PORTAL ATTACHMENT MENU
-      ======================================================== */}
-
-      {attachmentMenu}
-
     </>
   );
 }

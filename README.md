@@ -121,14 +121,10 @@ document information - Ask questions about documents
 Uploaded PDFs can be opened directly from the Library so users can
 inspect the original source.
 
-### 🖼️ Image Analysis
-
-The backend supports image input and image analysis.
-
 ### 💬 Conversational Interface
 
 The frontend provides: - Chat conversations - Chat history - File
-attachments - PDF uploads - Image attachments - Voice input interface -
+attachments - PDF uploads - Voice input interface -
 Document-based questions
 
 ### ☁️ Cloud Deployment
@@ -162,8 +158,8 @@ vector database - Groq → LLM inference
               │                      │                      │
               ▼                      ▼                      ▼
        ┌─────────────┐        ┌─────────────┐        ┌─────────────┐
-       │    Auth     │        │    Agent    │        │ PDF / Image │
-       │    + JWT    │        │   Router    │        │ Processing   │
+       │    Auth     │        │    Agent    │        │ PDF Medical │
+       │    + JWT    │        │   Router    │        │ Ingestion   │
        └─────────────┘        └──────┬──────┘        └─────────────┘
                                      │
                        ┌─────────────┼─────────────┐
@@ -254,7 +250,6 @@ Evidence-Grounded Response
 -   Text chunking
 -   Document verification
 -   SHA-256 document fingerprinting
--   Image analysis
 
 ### Development & Deployment
 
@@ -279,7 +274,6 @@ Drug-Assist-Agentic-RAG/
 │   ├── console.py
 │   ├── debug_crohn.py
 │   ├── embeddings.py
-│   ├── image_analyzer.py
 │   ├── inspect_pages.py
 │   ├── main.py
 │   ├── pdf_processor.py
@@ -587,7 +581,6 @@ consequences.
   Vector Database       Pinecone indexing and retrieval
   Authentication        Registration, login and JWT security
   Document Processing   PDF extraction and verification
-  AI / Image Analysis   Image processing and analysis
   Testing               API and application testing
   Deployment            GitHub and Render cloud deployment
 
@@ -640,7 +633,6 @@ application rather than a simple LLM chatbot.
 ✓ PDF Upload
 ✓ PDF Viewer
 ✓ Document Library
-✓ Image Analysis
 ✓ Conversational Interface
 ✓ SQL / Database Integration
 ✓ Web Retrieval Capability

@@ -41,4 +41,4 @@ The compiled static assets will be output to `frontend/dist/`.
 - **Agentic Chat Interface:** Multi-turn conversational Q&A with evidence citation badges and reasoning breakdown.
 - **Prescribing Document Uploader:** Drag-and-drop PDF ingestion with verified medical source checks.
 - **Document Library & In-Browser PDF Viewer:** Real-time page preview with zoom and full-text browsing.
-- **Image Analysis & Voice Queries:** Multi-modal support with Groq Whisper audio transcription and clinical image inspection.
+- **Voice Queries:** Audio input with Groq Whisper transcription and hands-free voice asking.

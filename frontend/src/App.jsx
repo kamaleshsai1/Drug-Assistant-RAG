@@ -28,7 +28,6 @@ import {
   deleteConversation,
   deleteAllConversations,
   deletePDF,
-  askImage,
   voiceAsk,
   getDocumentPDF,
   getCurrentUser,
@@ -185,13 +184,7 @@ function App() {
   const [pdfLoading, setPdfLoading] = useState(false);
 
 
-  // ============================================================
-  // IMAGE
-  // ============================================================
 
-  const [pendingImage, setPendingImage] = useState(null);
-  const [pendingImagePreview, setPendingImagePreview] =
-    useState("");
 
 
   // ============================================================
@@ -530,9 +523,6 @@ function App() {
       );
 
       setInput("");
-
-      setPendingImage(null);
-      setPendingImagePreview("");
 
       setCurrentView("chat");
 
@@ -990,10 +980,6 @@ const handleOpenSource = async (
 
     setSelectedDocumentName("");
 
-    setPendingImage(null);
-
-    setPendingImagePreview("");
-
     setIsRecording(false);
 
     setVoiceStatus("");
@@ -1057,10 +1043,6 @@ const handleOpenSource = async (
     setSelectedDocumentId(null);
 
     setSelectedDocumentName("");
-
-    setPendingImage(null);
-
-    setPendingImagePreview("");
 
     setCurrentView("chat");
   };
@@ -1231,10 +1213,6 @@ const handleOpenSource = async (
     }
 
 
-    const imageToSend =
-      pendingImage;
-
-
     const userMessage = {
       id:
         `user-${Date.now()}`,
@@ -1255,47 +1233,17 @@ const handleOpenSource = async (
 
     setInput("");
 
-    setPendingImage(null);
-
-    setPendingImagePreview("");
-
     setLoading(true);
 
 
     try {
 
-      let data;
-
-
-      // --------------------------------------------------------
-      // IMAGE QUESTION
-      // --------------------------------------------------------
-
-      if (imageToSend) {
-
-        data =
-          await askImage(
-            text,
-            imageToSend.file,
-            currentConversationId
-          );
-
-      }
-
-      // --------------------------------------------------------
-      // NORMAL RAG QUESTION
-      // --------------------------------------------------------
-
-      else {
-
-        data =
-          await askAURA(
-            text,
-            currentConversationId,
-            selectedDocumentId
-          );
-      }
-
+      const data =
+        await askAURA(
+          text,
+          currentConversationId,
+          selectedDocumentId
+        );
 
       if (
         data.chat_id ||
@@ -1418,80 +1366,10 @@ const handleOpenSource = async (
   // ============================================================
 
   const handleFileUpload = async (
-    file,
-    isImage = false
+    file
   ) => {
 
     if (!file) return;
-
-
-    // ----------------------------------------------------------
-    // IMAGE
-    // ----------------------------------------------------------
-
-    if (isImage) {
-
-      if (
-        !file.type.startsWith(
-          "image/"
-        )
-      ) {
-        return;
-      }
-
-
-      if (
-        file.size >
-        15 * 1024 * 1024
-      ) {
-
-        setMessages(
-          (previous) => [
-            ...previous,
-
-            {
-              id:
-                `image-error-${Date.now()}`,
-
-              role: "assistant",
-
-              content:
-                "Please select an image smaller than 15 MB."
-            }
-          ]
-        );
-
-        return;
-      }
-
-
-      if (pendingImagePreview) {
-
-        URL.revokeObjectURL(
-          pendingImagePreview
-        );
-      }
-
-
-      const previewUrl =
-        URL.createObjectURL(
-          file
-        );
-
-
-      setPendingImage({
-        file,
-        name: file.name
-      });
-
-
-      setPendingImagePreview(
-        previewUrl
-      );
-
-
-      return;
-    }
 
 
     // ----------------------------------------------------------
@@ -1651,24 +1529,7 @@ const handleOpenSource = async (
   };
 
 
-  // ============================================================
-  // REMOVE IMAGE
-  // ============================================================
 
-  const removePendingImage = () => {
-
-    if (pendingImagePreview) {
-
-      URL.revokeObjectURL(
-        pendingImagePreview
-      );
-    }
-
-
-    setPendingImage(null);
-
-    setPendingImagePreview("");
-  };
 
 
   // ============================================================
@@ -2893,17 +2754,7 @@ const handleOpenSource = async (
               handleFileUpload
             }
 
-            pendingImage={
-              pendingImage
-            }
 
-            pendingImagePreview={
-              pendingImagePreview
-            }
-
-            onRemoveImage={
-              removePendingImage
-            }
 
             loading={
               loading

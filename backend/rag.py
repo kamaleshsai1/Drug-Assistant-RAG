@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from groq import Groq
 
 from pinecone_db import search_pinecone
-from image_analyzer import analyze_image
 
 
 # ============================================================
@@ -2527,67 +2526,7 @@ def answer_question(
     }
 
 
-# ============================================================
-# IMAGE + RAG
-# ============================================================
 
-def analyze_uploaded_image(
-    image_path: str,
-    question: str = ""
-) -> str:
-
-    if not image_path:
-        return ""
-
-    try:
-
-        result = analyze_image(
-            image_path,
-            question=question
-        )
-
-        return normalize_image_context(
-            result
-        )
-
-    except Exception as error:
-
-        print(
-            "[Image] Analysis failed:",
-            repr(error)
-        )
-
-        return ""
-
-
-def answer_question_with_image(
-    question: str,
-    image_path: str,
-    previous_videos: Optional[List[Dict[str, Any]]] = None,
-    conversation_history: Optional[List[Dict[str, Any]]] = None,
-    memories: Optional[List[Dict[str, Any]]] = None,
-    user_id: Optional[int] = None,
-    chat_id: Optional[int] = None
-) -> Dict[str, Any]:
-
-    image_analysis = analyze_uploaded_image(
-        image_path,
-        question=question
-    )
-
-    result = answer_question(
-        question,
-        previous_videos=previous_videos,
-        image_context=image_analysis,
-        conversation_history=conversation_history,
-        memories=memories,
-        user_id=user_id,
-        chat_id=chat_id
-    )
-
-    result["image_analysis"] = image_analysis
-
-    return result
 
 
 # ============================================================

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   FileText,
-  Image as ImageIcon,
   X,
   ArrowUp,
 } from "lucide-react";
@@ -13,7 +12,6 @@ function Composer({
 }) {
   const textareaRef = useRef(null);
   const pdfInputRef = useRef(null);
-  const imageInputRef = useRef(null);
 
   const [attachments, setAttachments] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -133,15 +131,9 @@ function Composer({
         file.type === "application/pdf" ||
         name.endsWith(".pdf");
 
-      const isImage =
-        file.type.startsWith("image/") ||
-        /\.(jpg|jpeg|png|webp|bmp|gif|tif|tiff|jfif)$/i.test(
-          name
-        );
-
-      if (!isPDF && !isImage) {
+      if (!isPDF) {
         alert(
-          `${file.name} is not supported. Please upload a PDF or image.`
+          `${file.name} is not supported. Please upload a PDF file.`
         );
         continue;
       }
@@ -156,10 +148,8 @@ function Composer({
       newAttachments.push({
         file,
         name: file.name,
-        type: isPDF ? "pdf" : "image",
-        previewUrl: isImage
-          ? URL.createObjectURL(file)
-          : null,
+        type: "pdf",
+        previewUrl: null,
       });
     }
 
@@ -182,15 +172,6 @@ function Composer({
   // ============================================================
 
   const handlePDFChange = (event) => {
-    addFiles(event.target.files);
-    event.target.value = "";
-  };
-
-  // ============================================================
-  // IMAGE
-  // ============================================================
-
-  const handleImageChange = (event) => {
     addFiles(event.target.files);
     event.target.value = "";
   };
@@ -252,19 +233,6 @@ function Composer({
             <span>Upload PDF</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() =>
-              imageInputRef.current?.click()
-            }
-          >
-            <ImageIcon size={17} />
-            <span>Upload Image</span>
-          </button>
-
-        </div>
-      )}
-
       {/* ========================================================
           HIDDEN FILE INPUTS
       ======================================================== */}
@@ -275,17 +243,6 @@ function Composer({
         accept=".pdf,application/pdf"
         multiple
         onChange={handlePDFChange}
-        style={{
-          display: "none",
-        }}
-      />
-
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*,.jfif,.tif,.tiff"
-        multiple
-        onChange={handleImageChange}
         style={{
           display: "none",
         }}
@@ -344,10 +301,7 @@ function Composer({
                     </div>
 
                     <div className="drugassist-file-type">
-                      {attachment.type ===
-                      "pdf"
-                        ? "PDF • Ready to send"
-                        : "Image • Ready to send"}
+                      PDF • Ready to send
                     </div>
 
                   </div>
@@ -360,10 +314,10 @@ function Composer({
                         index
                       )
                     }
-                    disabled={isDisabled}
-                    title="Remove"
+                    title="Remove attachment"
+                    aria-label="Remove attachment"
                   >
-                    <X size={16} />
+                    <X size={15} />
                   </button>
 
                 </div>
@@ -372,6 +326,31 @@ function Composer({
 
           </div>
         )}
+
+        {/* ======================================================
+            INPUT ROW
+        ====================================================== */}
+
+        <div className="drugassist-input-row">
+
+          {/* ====================================================
+              ATTACH BUTTON
+          ==================================================== */}
+
+          <button
+            type="button"
+            className="drugassist-plus"
+            onClick={() =>
+              pdfInputRef.current?.click()
+            }
+            disabled={isDisabled}
+            title="Attach Medication PDF"
+            aria-label="Attach Medication PDF"
+          >
+            +
+          </button>
+
+        </div>
 
         {/* ======================================================
             TEXTAREA
