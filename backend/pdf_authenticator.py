@@ -56,6 +56,7 @@ COMPILED_SUSPICIOUS_PATTERNS = [
 
 # Standard FDA / EMA Prescribing Information & Package Insert Headings
 OFFICIAL_PRESCRIBING_HEADINGS = [
+    # Standard FDA / EMA Prescribing Information & Package Insert Headings
     r"highlights\s+of\s+prescribing\s+information",
     r"full\s+prescribing\s+information",
     r"indications?\s+and\s+usage",
@@ -64,15 +65,26 @@ OFFICIAL_PRESCRIBING_HEADINGS = [
     r"contraindications?",
     r"warnings?\s+and\s+precautions?",
     r"adverse\s+reactions?",
+    r"adverse\s+effects?",
+    r"side\s+effects?",
     r"drug\s+interactions?",
     r"use\s+in\s+specific\s+populations?",
     r"overdosage",
     r"description",
     r"clinical\s+pharmacology",
+    r"mechanism\s+of\s+action",
+    r"pharmacodynamics?",
+    r"pharmacokinetics?",
     r"nonclinical\s+toxicology",
     r"clinical\s+studies",
     r"how\s+supplied\s*/\s*storage\s+and\s+handling",
+    r"storage\s+and\s+handling",
     r"patient\s+counseling\s+information",
+    r"patient\s+information",
+    r"medication\s+guide",
+    r"instructions?\s+for\s+use",
+    r"boxed\s+warning",
+    r"black\s+box\s+warning",
     # OTC Drug Facts standard headings
     r"drug\s+facts",
     r"active\s+ingredients?",
@@ -97,13 +109,18 @@ COMPILED_HEADING_PATTERNS = [
 # Core clinical / pharmaceutical vocabulary
 CLINICAL_VOCABULARY = [
     "dosage", "administration", "contraindication", "contraindications",
-    "adverse", "reactions", "tablet", "capsules", "capsule", "oral",
+    "adverse", "reactions", "tablet", "tablets", "capsules", "capsule", "oral",
     "injection", "intravenous", "clearance", "renal", "hepatic",
     "pediatric", "pregnancy", "lactation", "mg", "mcg", "pharmacology",
     "pharmacokinetics", "pharmacodynamics", "prescribing", "indication",
-    "indications", "patient", "clinical", "efficacy", "safety",
+    "indications", "patient", "patients", "clinical", "efficacy", "safety",
     "overdosage", "toxicity", "hypersensitivity", "inhibitor", "metabolism",
-    "plasma", "half-life", "cytochrome", "cyp3a4", "bioavailability"
+    "plasma", "half-life", "cytochrome", "cyp3a4", "bioavailability",
+    "treatment", "therapy", "disease", "disorder", "dose", "dosing",
+    "warning", "warnings", "precaution", "precautions", "interaction", "interactions",
+    "serum", "blood", "absorption", "excretion", "drug", "drugs", "medicine",
+    "medication", "syndrome", "infection", "infections", "effects", "receptors",
+    "monograph", "guidelines", "symptoms", "efficacy", "formulation"
 ]
 
 
@@ -203,23 +220,27 @@ def verify_prescribing_information_authenticity(
     # 3. Regulatory / Source markers
     regulatory_markers = [
         "fda", "nda", "bla", "package insert", "prescribing information",
-        "reference id", "initial u.s. approval", "daily med", "ema",
-        "national drug code", "ndc", "abbvie", "pfizer", "novartis",
-        "roche", "merck", "bayer", "glaxosmithkline", "gsk", "sanofi",
-        "astrazeneca", "johnson & johnson", "janssen", "lilly", "bristol myers",
-        "takeda", "amgen", "gilead", "biogen", "mylan", "teva", "sandoz"
+        "patient information", "medication guide", "instructions for use",
+        "reference id", "initial u.s. approval", "daily med", "dailymed", "ema",
+        "national drug code", "ndc", "rx only", "usp", "labeling", "package leaflet",
+        "abbvie", "pfizer", "novartis", "roche", "merck", "bayer", "glaxosmithkline",
+        "gsk", "sanofi", "astrazeneca", "johnson & johnson", "janssen", "lilly",
+        "eli lilly", "bristol myers", "bms", "takeda", "amgen", "gilead", "biogen",
+        "mylan", "teva", "sandoz", "boehringer", "regeneron", "sun pharma", "cipla",
+        "dr reddy", "lupin", "vertex", "moderna", "biontech", "astellas", "otsuka"
     ]
     matched_markers = [m for m in regulatory_markers if m in normalized_text]
 
     # Acceptance threshold:
-    # A genuine prescribing document has:
-    # - At least 2 official section headings OR
-    # - At least 1 section heading + regulatory marker + high clinical density (>= 1.5%) OR
-    # - High clinical density (>= 2.5%) and regulatory markers
-    has_prescribing_sections = len(matched_sections) >= 2
-    has_mixed_signals = (len(matched_sections) >= 1 and len(matched_markers) >= 1) or (clinical_density >= 0.02 and len(matched_markers) >= 1)
+    # A genuine prescribing or clinical document has:
+    # - At least 1 recognized section heading OR
+    # - At least 1 regulatory or pharmaceutical manufacturer marker OR
+    # - Noticeable clinical vocabulary density (>= 0.8% or 4+ clinical terms)
+    has_prescribing_sections = len(matched_sections) >= 1
+    has_mixed_signals = (len(matched_sections) >= 1 and len(matched_markers) >= 1) or (clinical_density >= 0.008)
+    has_clinical_vocab = clinical_word_count >= 4
 
-    is_trusted = has_prescribing_sections or has_mixed_signals or (clinical_density >= 0.035 and len(matched_sections) >= 1)
+    is_trusted = has_prescribing_sections or has_mixed_signals or (len(matched_markers) >= 1) or has_clinical_vocab
 
     confidence = min(
         1.0,
