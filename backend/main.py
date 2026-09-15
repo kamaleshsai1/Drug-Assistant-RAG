@@ -1710,6 +1710,14 @@ async def chat(
                 )
 
     # ========================================================
+    # GET EXISTING MESSAGES
+    # ========================================================
+
+    previous_messages = get_messages(
+        current_chat_id
+    ) or []
+
+    # ========================================================
     # SAVE USER MESSAGE
     # ========================================================
 
@@ -1790,7 +1798,7 @@ async def chat(
             },
             "grounding_score": 0.0,
             "evidence": [],
-            "image_analysis": combined_image_context,
+            "image_analysis": "",
         }
 
     # ========================================================
@@ -1935,7 +1943,7 @@ async def chat(
 
         returned_image_analysis = result.get(
             "image_analysis",
-            effective_image_context,
+            "",
         )
 
         if not answer:
