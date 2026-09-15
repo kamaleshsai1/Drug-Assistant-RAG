@@ -687,8 +687,6 @@ export default {
 
   // Chat
   askAURA,
-  askImage,
-  askWithImage,
   askWithVoice,
   voiceAsk,
   askQuestion,
