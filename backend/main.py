@@ -1847,6 +1847,14 @@ async def chat(
                     )
                     print("=" * 70)
 
+                except HTTPException as http_err:
+                    if os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                        except Exception:
+                            pass
+                    raise http_err
+
                 except Exception as error:
 
                     print()
